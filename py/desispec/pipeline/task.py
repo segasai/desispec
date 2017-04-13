@@ -884,8 +884,6 @@ class WorkerRedrock(Worker):
         optarray = option_list(options)
         optarray.extend(brickfiles)
 
-        #- TODO: add redrock hdf5 output
-
         # at debug level, write out the equivalent commandline
         if rank == 0:
             com = ["RUN", "rrdesi"]
