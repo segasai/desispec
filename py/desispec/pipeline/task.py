@@ -828,6 +828,77 @@ class WorkerProcexp(Worker):
 
         return
 
+class WorkerRedrock(Worker):
+    """
+    Use Redrock to classify spectra and compute redshifts.
+    """
+    def __init__(self, opts):
+        super(Worker, self).__init__()
+
+    def max_nproc(self):
+        return 1
+
+    def default_options(self):
+        opts = {}
+        return opts
+
+    #- Need to run:
+    #- rrdesi --zbest=ZBESTFILE.fits [--output blat.h5] brick-*.fits
+
+    def run(self, grph, task, opts, comm=None):
+        """
+        Run redrock on a brick.
+
+        Args:
+            grph (dict): pruned graph with this task and dependencies.
+            task (str): the name of this task.
+            opts (dict): options to use for this task.
+            comm (mpi4py.MPI.Comm): optional MPI communicator.
+        """
+        nproc = 1
+        rank = 0
+        if comm is not None:
+            nproc = comm.size
+            rank = comm.rank
+
+        log = get_logger()
+
+        node = grph[task]
+
+        brick = node["brick"]
+        zbestfile = graph_path(task)
+
+        basedir, filename = os.path.split(zbestfile)
+        rrfile = filename.replace('zbest-', 'rr-').replace('.fits', '.h5')
+        assert rrfile != zbestfile
+        rrfile = os.path.join(basedir, rrfile)
+
+        brickfiles = list()
+        for b in node['in']:
+            brickfiles.append(graph_path(b))
+
+        options = {}
+        options["zbest"] = zbestfile
+        options["output"] = rrfile
+        options.update(opts)
+        optarray = option_list(options)
+        optarray.extend(brickfiles)
+
+        #- TODO: add redrock hdf5 output
+
+        # at debug level, write out the equivalent commandline
+        if rank == 0:
+            com = ["RUN", "rrdesi"]
+            com.extend(optarray)
+            log.debug(" ".join(com))
+
+        # args = zfind.parse(optarray)
+        # zfind.main(args, comm=comm)
+        from redrock.external.desi import rrdesi
+        rrdesi(optarray)
+
+        return
+
 
 class WorkerRedmonster(Worker):
     """

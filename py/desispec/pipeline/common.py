@@ -93,7 +93,8 @@ default_workers = {
     "stdstars" : "Stdstars",
     "fluxcal" : "Fluxcal",
     "calibrate" : "Procexp",
-    "redshift" : "Redmonster"    
+    ### "redshift" : "Redmonster",
+    "redshift" : "Redrock"
 }
 """The default worker type for each pipeline step."""
 
