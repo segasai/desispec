@@ -38,28 +38,35 @@ import matplotlib.cm as cm
 from matplotlib.backends.backend_pdf import PdfPages
 
 from desiutil.log import get_logger
-from desiutil import funcfits as dufits
+from desispec.spectrum import Spectrum
+from desispec.bootcalib import find_arc_lines
 
 
 
 def flexure_archive():
     """  Load archived sky spectrum
     Returns:
-        wavelength
-        flux
+        spec -- Spectrum object
     """
     #   latitude = settings.spect['mosaic']['latitude']
     #   longitude = settings.spect['mosaic']['longitude']
     skyspec_fil = resource_filename('desispec', 'data/sky/paranal_sky.fits')
     hdu = fits.open(skyspec_fil)
-    flux = hdu[0].data
-    wavelength = hdu[1].data
+    # Instantiate
+    spec = Spectrum(hdu[1].data, hdu[0].data, np.ones_like(hdu[0].data))
     #
-    return wavelength, flux
+    return spec
 
 
-def flex_shift(obj_skyspec, arx_skyspec):
+def flex_shift(channel, obj_skyspec, arx_skyspec, dwv_arx=0.05):
     """ Calculate shift between object sky spectrum and archive sky spectrum
+
+    import desimodel.io
+    psf = desimodel.io.load_psf('b')
+    w  = np.linspace(psf.wmin, psf.wmax, 100)
+    wd = psf.wdisp(100, w)
+    np.median(wd)
+
 
     Parameters
     ----------
@@ -67,31 +74,37 @@ def flex_shift(obj_skyspec, arx_skyspec):
     det
     obj_skyspec
     arx_skyspec
+    dwv_arx : float
+      Dispersion of Paranal spectrum
+      R_Paranal = 31300
 
     Returns
     -------
     flex_dict
     """
-    #Determine the brightest emission lines
-    msgs.warn("If we use Paranal, cut down on wavelength early on")
-    arx_amp, arx_cent, arx_wid, arx_w, arx_satsnd, arx_yprep = ararc.detect_lines(slf, det, msarc=None, censpec=arx_skyspec.flux.value, MK_SATMASK=False)
-    obj_amp, obj_cent, obj_wid, obj_w, obj_satsnd, obj_yprep = ararc.detect_lines(slf, det, msarc=None, censpec=obj_skyspec.flux.value, MK_SATMASK=False)
+    # DESI resoultion
+    wdisp_dict = dict(b=0.628, r=0.578, z=0.731)  # Ang
+    # Paranal
+    wdisp_paranal =
+
+    # Find the brightest emission lines
+    arx_cent, arx_amp = find_arc_lines(arx_skyspec.flux)
+    obj_cent, obj_amp = find_arc_lines(obj_skyspec.flux)
 
     #Keep only 5 brightest amplitude lines (xxx_keep is array of indices within arx_w of the 5 brightest)
-    arx_keep = np.argsort(arx_amp[arx_w])[-5:]
-    obj_keep = np.argsort(obj_amp[obj_w])[-5:]
+    arx_keep = np.argsort(arx_amp)[-5:]
+    obj_keep = np.argsort(obj_amp)[-5:]
 
-    #Calculate wavelength (Angstrom per pixel)
-    arx_disp = np.append(arx_skyspec.wavelength.value[1]-arx_skyspec.wavelength.value[0],
-                         arx_skyspec.wavelength.value[1:]-arx_skyspec.wavelength.value[:-1])
-    #arx_disp = (np.amax(arx_sky.wavelength.value)-np.amin(arx_sky.wavelength.value))/arx_sky.wavelength.size
-    obj_disp = np.append(obj_skyspec.wavelength.value[1]-obj_skyspec.wavelength.value[0],
-                         obj_skyspec.wavelength.value[1:]-obj_skyspec.wavelength.value[:-1])
-    #obj_disp = (np.amax(obj_sky.wavelength.value)-np.amin(obj_sky.wavelength.value))/obj_sky.wavelength.size
+    #Calculate dispersion (Angstrom per pixel)
+    arx_disp = np.append(arx_skyspec.wavelength[1]-arx_skyspec.value[0],
+                         arx_skyspec.wavelength[1:]-arx_skyspec.value[:-1])
+    obj_disp = np.append(obj_skyspec.wavelength[1]-obj_skyspec.wavelength[0],
+                         obj_skyspec.wavelength[1:]-obj_skyspec.wavelength[:-1])
 
+    '''
     #Calculate resolution (lambda/delta lambda_FWHM)..maybe don't need this? can just use sigmas
-    arx_idx = (arx_cent+0.5).astype(np.int)[arx_w][arx_keep]   # The +0.5 is for rounding
-    arx_res = arx_skyspec.wavelength.value[arx_idx]/\
+    arx_idx = (arx_cent+0.5).astype(np.int)[arx_keep]   # The +0.5 is for rounding
+    arx_res = arx_skyspec.wavelength[arx_idx]/\
               (arx_disp[arx_idx]*(2*np.sqrt(2*np.log(2)))*arx_wid[arx_w][arx_keep])
     obj_idx = (obj_cent+0.5).astype(np.int)[obj_w][obj_keep]   # The +0.5 is for rounding
     obj_res = obj_skyspec.wavelength.value[obj_idx]/ \
@@ -100,6 +113,7 @@ def flex_shift(obj_skyspec, arx_skyspec):
     #    obj_disp*(2*np.sqrt(2*np.log(2)))*obj_wid[obj_w][obj_keep])
     msgs.info("Resolution of Archive={:g} and Observation={:g}".format(
         np.median(arx_res), np.median(obj_res)))
+    '''
 
     #Determine sigma of gaussian for smoothing
     arx_sig2 = (arx_disp[arx_idx]*arx_wid[arx_w][arx_keep])**2.

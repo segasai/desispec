@@ -132,6 +132,13 @@ def find_arc_lines(spec,rms_thresh=7.,nwidth=5):
       RMS threshold scale
     nwidth : int
       Line width to test over
+
+    Returns
+    -------
+    xpk : ndarray
+      Pixel values of the peaks
+    flux : ndarray
+
     """
     # Threshold criterion
     npix = spec.size
@@ -168,7 +175,7 @@ def find_arc_lines(spec,rms_thresh=7.,nwidth=5):
         xpk[jj] = np.sum(pix*spec[pix]) / flux[jj]
 
     # Finish
-    return xpk , flux
+    return xpk, flux
 
 
 
