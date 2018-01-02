@@ -35,7 +35,7 @@ def load_paranal():
     return spec
 
 
-def flex_shift(channel, obj_skyspec, mxshft=10., debug=False):
+def flex_shift(channel, obj_skyspec, mxshft=10, debug=False):
     """ Calculate shift between object sky spectrum and archive sky spectrum
 
     import desimodel.io
@@ -50,7 +50,7 @@ def flex_shift(channel, obj_skyspec, mxshft=10., debug=False):
     slf
     det
     obj_skyspec
-    mxshft : float
+    mxshft : int
       Maximum shift to allow for in the flexure analysis
     dwv_arx : float
       Dispersion of Paranal spectrum
@@ -169,12 +169,15 @@ def flex_shift(channel, obj_skyspec, mxshft=10., debug=False):
 
     #Create array around the max of the correlation function for fitting for subpixel max
     # Restrict to pixels within maxshift of zero lag
-    lag0 = corr.size//2
+    lag0 = corr.size // 2
+    #import pdb; pdb.set_trace()
     max_corr = np.argmax(corr[lag0-mxshft:lag0+mxshft]) + lag0-mxshft
     subpix_grid = np.linspace(max_corr-3., max_corr+3., 7.)
 
     #Fit a 2-degree polynomial to peak of correlation function
-    fit = func_fit(subpix_grid, corr[subpix_grid.astype(np.int)], 'polynomial', 2)
+    fit_dict = func_fit(subpix_grid, corr[subpix_grid.astype(np.int)],
+                        'polynomial', 2, xnorm=False)
+    fit = fit_dict['coeff']
     max_fit = -0.5*fit[1]/fit[2]
 
     #Calculate and apply shift in wavelength
