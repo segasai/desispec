@@ -168,7 +168,7 @@ def flex_shift(channel, obj_skyspec, mxshft=10, debug=False):
     corr = np.correlate(arx_sky_flux, obj_sky_flux, "same")
 
     #Create array around the max of the correlation function for fitting for subpixel max
-    # Restrict to pixels within maxshift of zero lag
+    # Restrict to pixels within mxshft of zero lag
     lag0 = corr.size // 2
     #import pdb; pdb.set_trace()
     max_corr = np.argmax(corr[lag0-mxshft:lag0+mxshft]) + lag0-mxshft
