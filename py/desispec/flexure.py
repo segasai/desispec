@@ -15,12 +15,12 @@ from pkg_resources import resource_exists, resource_filename
 from astropy.io import fits
 
 from desiutil.log import get_logger
-from desiutil.funcfits import iter_fit, func_fit
+from desiutil.funcfits import iter_fit, func_fit, func_val
 from desispec.spectrum import Spectrum
 from desispec.bootcalib import find_arc_lines
 
 
-def flexure_archive():
+def load_paranal():
     """  Load archived sky spectrum
     Returns:
         spec -- Spectrum object
@@ -35,7 +35,7 @@ def flexure_archive():
     return spec
 
 
-def flex_shift(channel, obj_skyspec, arx_skyspec, mxshft=10., debug=False):
+def flex_shift(channel, obj_skyspec, mxshft=10., debug=False):
     """ Calculate shift between object sky spectrum and archive sky spectrum
 
     import desimodel.io
@@ -50,7 +50,6 @@ def flex_shift(channel, obj_skyspec, arx_skyspec, mxshft=10., debug=False):
     slf
     det
     obj_skyspec
-    arx_skyspec
     mxshft : float
       Maximum shift to allow for in the flexure analysis
     dwv_arx : float
@@ -61,10 +60,15 @@ def flex_shift(channel, obj_skyspec, arx_skyspec, mxshft=10., debug=False):
     -------
     flex_dict
     """
+    from astropy.convolution import convolve, Gaussian1DKernel
+
+    # Load archive spectrum
+    arx_skyspec = load_paranal()
+
     # Logging
     log=get_logger()
     log.info("starting flexure shift calculation")
-    # DESI resolution (FWHM??)
+    # DESI resolution (sigma)
     wdisp_dict = dict(b=0.628, r=0.578, z=0.731)  # Ang
     wvmed_dict = dict(b=4765., r=6685., z=8635.) # Ang
     # Paranal (FWHM)
@@ -97,19 +101,26 @@ def flex_shift(channel, obj_skyspec, arx_skyspec, mxshft=10., debug=False):
     '''
 
     # Calculate dispersion (Angstrom per pixel)
-    arx_disp = np.append(arx_skyspec.wavelength[1]-arx_skyspec.value[0],
-                         arx_skyspec.wavelength[1:]-arx_skyspec.value[:-1])
-    obj_disp = np.append(obj_skyspec.wavelength[1]-obj_skyspec.wavelength[0],
-                         obj_skyspec.wavelength[1:]-obj_skyspec.wavelength[:-1])
+    arx_disp = np.append(arx_skyspec.wave[1]-arx_skyspec.wave[0],
+                         arx_skyspec.wave[1:]-arx_skyspec.wave[:-1])
 
     # Determine sigma of gaussian for smoothing
     arx_med_sig2 = (wdisp_paranal/(2*np.sqrt(2*np.log(2))))**2
-    obj_med_sig2 = (wdisp_dict[channel]/(2*np.sqrt(2*np.log(2))))**2
+    obj_med_sig2 = wdisp_dict[channel]**2
 
     # Smooth
     smooth_sig = np.sqrt(obj_med_sig2-arx_med_sig2)  # Ang
     smooth_sig_pix = smooth_sig / np.median(arx_disp)
-    arx_skyspec = arx_skyspec.gauss_smooth(smooth_sig_pix*2*np.sqrt(2*np.log(2)))
+
+    # gaussian drops to 1/100 of maximum value at x =
+    # sqrt(2*ln(100))*sigma, so number of pixels to include from
+    # centre of gaussian is:
+    const100 = 3.034854259             # sqrt(2*ln(100))
+    n = np.ceil(const100 * smooth_sig_pix)
+    x_size = int(2*n) + 1  # we want this to be odd integer
+    arx_skyspec.flux = convolve(arx_skyspec.flux,
+                                Gaussian1DKernel(smooth_sig_pix, x_size=x_size),
+                                boundary='fill', fill_value=0., normalize_kernel=True)
 
     # Determine region of wavelength overlap
     min_wave = max(np.amin(arx_skyspec.wave), np.amin(obj_skyspec.wave))
@@ -146,13 +157,11 @@ def flex_shift(channel, obj_skyspec, arx_skyspec, mxshft=10., debug=False):
 
     # Deal with underlying continuum
     everyn = obj_skyspec.npix // 20
-    mask, ct = iter_fit(obj_skyspec.wave, obj_skyspec.flux, 3, function='bspline',
-                                  sigma=3., everyn=everyn)
-    obj_sky_cont = arutils.func_val(ct, obj_skyspec.wavelength.value, 'bspline')
+    obj_fdict, _ = iter_fit(obj_skyspec.wave, obj_skyspec.flux, 'bspline', 3, sig_rej=3., everyn=everyn)
+    obj_sky_cont = func_val(obj_skyspec.wave, obj_fdict)
     obj_sky_flux = obj_skyspec.flux - obj_sky_cont
-    mask, ct_arx = arutils.robust_polyfit(arx_skyspec.wavelength.value, arx_skyspec.flux.value, 3, function='bspline',
-                                      sigma=3., everyn=everyn)
-    arx_sky_cont = arutils.func_val(ct_arx, arx_skyspec.wavelength.value, 'bspline')
+    arx_fdict, mask = iter_fit(arx_skyspec.wave, arx_skyspec.flux, 'bspline', 3, sig_rej=3., everyn=everyn)
+    arx_sky_cont = func_val(arx_skyspec.wave, arx_fdict)
     arx_sky_flux = arx_skyspec.flux - arx_sky_cont
 
     #Cross correlation of spectra

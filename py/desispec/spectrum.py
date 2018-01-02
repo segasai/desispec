@@ -8,7 +8,7 @@ from __future__ import absolute_import, division
 
 import numpy as np
 
-from desiutil.log import get_logger
+from desispec.interpolation import resample_flux
 
 class Spectrum(object):
     def __init__(self, wave, flux, ivar, mask=None, R=None):
@@ -33,6 +33,10 @@ class Spectrum(object):
         self.R = R
 
     @property
+    def npix(self):
+        return len(self.wave)
+
+    @property
     def sig(self):
         # Sigma from ivar
         sig = np.zeros_like(self.ivar)
@@ -50,4 +54,19 @@ class Spectrum(object):
         ax.plot(self.wave, self.sig, color='red')
         plt.show()
 
+    def rebin(self, new_wave):
+        """ Rebin the current spectrum onto a new wavelength array
+        Uses desispec.interpolation.resample_flux
+
+        Args:
+            new_wave:  ndarray
+              New wavelength values
+
+        Returns:
+        new_spec : Spectrum
+
+        """
+        new_flux, new_ivar = resample_flux(new_wave, self.wave, self.flux, ivar=self.ivar)
+        # Return
+        return Spectrum(new_wave, new_flux, new_flux)
 
