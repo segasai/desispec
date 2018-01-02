@@ -163,8 +163,6 @@ def flex_shift(channel, obj_skyspec, arx_skyspec, mxshft=10., debug=False):
     arx_sky_cont = arutils.func_val(ct_arx, arx_skyspec.wavelength.value, 'bspline')
     arx_sky_flux = arx_skyspec.flux - arx_sky_cont
 
-    # Consider sharpness filtering (e.g. LowRedux)
-
     #Cross correlation of spectra
     corr = np.correlate(arx_sky_flux, obj_sky_flux, "same")
 
