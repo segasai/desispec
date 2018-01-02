@@ -47,10 +47,13 @@ def parse(options=None):
                         help="regularization amount (default %(default)s)")
     parser.add_argument("--bundlesize", type=int, required=False, default=25,
                         help="number of spectra per bundle")
+    parser.add_argument("--nsubbundles", type=int, required=False, default=6,
+                        help="number of extraction sub-bundles")
     parser.add_argument("--nwavestep", type=int, required=False, default=50,
                         help="number of wavelength steps per divide-and-conquer extraction step")
     parser.add_argument("-v", "--verbose", action="store_true", help="print more stuff")
     parser.add_argument("--mpi", action="store_true", help="Use MPI for parallelism")
+    parser.add_argument("--decorrelate-fibers", action="store_true", help="Not recommended")
 
     args = None
     if options is None:
@@ -139,9 +142,9 @@ regularize: {regularize}
 
     #- The actual extraction
     results = ex2d(img.pix, img.ivar*(img.mask==0), psf, specmin, nspec, wave,
-                 regularize=args.regularize, ndecorr=True,
+                 regularize=args.regularize, ndecorr=args.decorrelate_fibers,
                  bundlesize=bundlesize, wavesize=args.nwavestep, verbose=args.verbose,
-                 full_output=True)
+                 full_output=True, nsubbundles=args.nsubbundles)
     flux = results['flux']
     ivar = results['ivar']
     Rdata = results['resolution_data']
@@ -166,7 +169,8 @@ regularize: {regularize}
                 chi2pix=chi2pix)
 
     #- Write output
-    io.write_frame(args.output, frame, units='photon/bin')
+    frame.meta['BUNIT'] = 'photon/bin'
+    io.write_frame(args.output, frame)
 
     if args.model is not None:
         from astropy.io import fits
@@ -325,9 +329,9 @@ def main_mpi(args, comm=None):
         #- The actual extraction
         try:
             results = ex2d(img.pix, img.ivar*(img.mask==0), psf, bspecmin[b],
-                bnspec[b], wave, regularize=args.regularize, ndecorr=True,
+                bnspec[b], wave, regularize=args.regularize, ndecorr=args.decorrelate_fibers,
                 bundlesize=bundlesize, wavesize=args.nwavestep, verbose=args.verbose,
-                full_output=True)
+                full_output=True, nsubbundles=args.nsubbundles)
 
             flux = results['flux']
             ivar = results['ivar']
@@ -360,7 +364,8 @@ def main_mpi(args, comm=None):
                         chi2pix=chi2pix)
 
             #- Write output
-            io.write_frame(outbundle, frame, units='photon/bin')
+            frame.meta['BUNIT'] = 'photon/bin'
+            io.write_frame(outbundle, frame)
 
             if args.model is not None:
                 from astropy.io import fits

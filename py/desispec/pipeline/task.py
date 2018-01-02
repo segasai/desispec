@@ -187,38 +187,26 @@ class WorkerSpecex(Worker):
         return 20
 
     def task_time(self):
-        return 20
+        return 15 # in general faster but convergence slower for some realizations
 
 
     def default_options(self):
         opts = {}
-        # opts["flux-hdu"] = 1
-        # opts["ivar-hdu"] = 2
-        # opts["mask-hdu"] = 3
-        # opts["header-hdu"] = 1
-        # opts["xcoord-hdu"] = 1
-        # opts["ycoord-hdu"] = 2
-        # opts["psfmodel"] = "GAUSSHERMITE"
-        # opts["half_size_x"] = 8
-        # opts["half_size_y"] = 5
-        # opts["verbose"] = False
-        # opts["gauss_hermite_deg"] = 6
-        # opts["legendre_deg_wave"] = 4
-        # opts["legendre_deg_x"] = 1
-        # opts["trace_deg_wave"] = 6
-        # opts["trace_deg_x"] = 6
-
+        opts["trace-deg-wave"] = 7
+        opts["trace-deg-x"] = 7
+        opts["trace-prior-deg"] = 4
+        
         # to get the lampline location, look in our path for specex
         # and use that install prefix to find the data directory.
         # if that directory does not exist, use a default NERSC
         # location.
-        opts["lamplines"] = "/project/projectdirs/desi/software/edison/specex/specex-0.3.9/data/specex_linelist_boss.txt"
+        opts["lamplines"] = "/project/projectdirs/desi/software/edison/specex/specex-0.3.9/data/specex_linelist_desi.txt"
         for path in os.environ["PATH"].split(os.pathsep):
             path = path.strip('"')
             exefile = os.path.join(path, "desi_psf_fit")
             if os.path.isfile(exefile) and os.access(exefile, os.X_OK):
                 specexdir = os.path.join(path, "..", "data")
-                opts["lamplines"] = os.path.join(specexdir, "specex_linelist_boss.txt")
+                opts["lamplines"] = os.path.join(specexdir, "specex_linelist_desi.txt")
 
         return opts
 
@@ -305,7 +293,7 @@ class WorkerSpecexCombine(Worker):
         return 1
 
     def task_time(self):
-        return 20
+        return 2 # fast 
 
 
     def default_options(self):
@@ -352,10 +340,10 @@ class WorkerSpecter(Worker):
 
 
     def max_nproc(self):
-        return 20
+        return 20 # 20 bundles per camera
 
     def task_time(self):
-        return 100
+        return 15 # 8 minute per bundle of 25 fibers on edison, but can be slower
 
 
     def default_options(self):
@@ -463,7 +451,7 @@ class WorkerFiberflat(Worker):
         return 1
 
     def task_time(self):
-        return 10
+        return 4 # 2 minutes on edison
 
 
     def default_options(self):
@@ -530,7 +518,7 @@ class WorkerSky(Worker):
         return 1
 
     def task_time(self):
-        return 5
+        return 2 # less than 1 minute 
 
     def default_options(self):
         opts = {}
@@ -609,8 +597,8 @@ class WorkerStdstars(Worker):
         return 1
 
     def task_time(self):
-        return 30
-
+        return 15 # less than 4 min on edison but can vary quite a bit
+        
 
     def default_options(self):
         log = get_logger()
@@ -706,7 +694,7 @@ class WorkerFluxcal(Worker):
         return 1
 
     def task_time(self):
-        return 10
+        return 2 # this is fast
 
     def default_options(self):
         opts = {}
@@ -796,7 +784,7 @@ class WorkerProcexp(Worker):
         return 1
 
     def task_time(self):
-        return 10
+        return 1 # fast
 
     def default_options(self):
         opts = {}
@@ -964,7 +952,7 @@ class WorkerRedrock(Worker):
         return self.specpermin
 
     def task_time(self):
-        return 60
+        return 30 # this really depends on the size of the spectra file??
 
     def default_options(self):
         opts = {}
