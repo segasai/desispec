@@ -291,6 +291,13 @@ class SkyModel(object):
         self.nrej = nrej
         self.stat_ivar = stat_ivar
 
+    def __repr__(self):
+        txt = '<{:s}: nspec={:d}, nwave={:d} nrej={:d}'.format(
+            self.__class__.__name__, self.nspec, self.nwave, self.nrej)
+        # Finish
+        txt += '>'
+        return (txt)
+
 def subtract_sky(frame, skymodel) :
     """Subtract skymodel from frame, altering frame.flux, .ivar, and .mask
 

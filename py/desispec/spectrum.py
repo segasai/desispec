@@ -32,4 +32,22 @@ class Spectrum(object):
 
         self.R = R
 
+    @property
+    def sig(self):
+        # Sigma from ivar
+        sig = np.zeros_like(self.ivar)
+        gd_ivar = self.ivar > 0.
+        sig[gd_ivar] = 1./np.sqrt(self.ivar[gd_ivar])
+        # Return
+        return sig
+
+    def plot(self):
+        from matplotlib import pyplot as plt
+        # Simple plot
+        plt.clf()
+        ax = plt.gca()
+        ax.plot(self.wave, self.flux)
+        ax.plot(self.wave, self.sig, color='red')
+        plt.show()
+
 

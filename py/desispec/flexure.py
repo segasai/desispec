@@ -14,14 +14,6 @@ from pkg_resources import resource_exists, resource_filename
 
 from astropy.io import fits
 
-from desispec.util import set_backend
-set_backend()
-
-#import matplotlib
-#import matplotlib.gridspec as gridspec
-#import matplotlib.cm as cm
-#from matplotlib.backends.backend_pdf import PdfPages
-
 from desiutil.log import get_logger
 from desiutil.funcfits import iter_fit, func_fit
 from desispec.spectrum import Spectrum
