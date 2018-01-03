@@ -26,8 +26,12 @@ def parse(options=None):
 
 def main(args) :
 
+    import numpy as np
     from desispec.io import meta
-    from desispec.qa.qa_plots import exposure_sky_wave
+    from desispec.flexure import flex_shift
+    #from desispec.qa.qa_plots import exposure_sky_wave
+    from desispec.io import get_files, find_exposure_night, read_frame
+    from desispec.spectrum import Spectrum
     log=get_logger()
 
     log.info("starting")
@@ -42,7 +46,29 @@ def main(args) :
 
     # Fiber QA
     if args.sky:
-        exposure_sky_wave(args.expid)
+        # Loop on frames to generate the QA
+        sky_QA = {}
+        night = find_exposure_night(args.expid)
+        frames_dict = get_files(filetype = str('frame'), night=night,
+                                expid=args.expid)#, specprod_dir = self.specprod_dir)
+        for camera,frame_fil in frames_dict.items():
+            print(camera)
+            sky_QA[camera] = {}
+            # Read
+            frame = read_frame(frame_fil)
+            fibermap = frame.fibermap
+            # Sky fibers
+            skyfibers = np.where(frame.fibermap['OBJTYPE'] == 'SKY')[0]
+            # Save X,Y
+            sky_QA[camera]['x'] = fibermap['X_TARGET'][skyfibers]
+            sky_QA[camera]['y'] = fibermap['Y_TARGET'][skyfibers]
+            sky_QA[camera]['shifts'] = []
+            # Loop to get offsets
+            for skyfiber in skyfibers:
+                spec = Spectrum(frame.wave, frame.flux[skyfiber,:], frame.ivar[skyfiber,:])
+                flex_dict = flex_shift(camera[0], spec)
+                sky_QA[camera]['shifts'].append(flex_dict['shift'])
+        import pdb; pdb.set_trace()
 
 
 
