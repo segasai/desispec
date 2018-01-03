@@ -1,0 +1,16 @@
+#!/usr/bin/env python
+#
+# See top-level LICENSE.rst file for Copyright information
+#
+# -*- coding: utf-8 -*-
+
+"""
+This script generates QA related to an Exposure
+"""
+
+import desispec.scripts.qa_wavelength as qa_wavelength
+
+
+if __name__ == '__main__':
+    args = qa_wavelength.parse()
+    qa_wavelength.main(args)
