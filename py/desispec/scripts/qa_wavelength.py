@@ -13,7 +13,7 @@ def parse(options=None):
     parser.add_argument('--reduxdir', type = str, default = None, metavar = 'PATH',
                         help = 'Override default path ($DESI_SPECTRO_REDUX/$SPECPROD) to processed data.')
     parser.add_argument('--sky', default = False, action='store_true',
-                        help = 'Generate plot showing offset from archived sky?')
+                        help = 'Calculate shift in wavelengths from archived sky?')
 
 
     args = None
@@ -27,6 +27,8 @@ def parse(options=None):
 def main(args) :
 
     import numpy as np
+    from astropy.table import Table
+
     from desispec.io import meta
     from desispec.flexure import flex_shift
     #from desispec.qa.qa_plots import exposure_sky_wave
@@ -66,8 +68,19 @@ def main(args) :
             # Loop to get offsets
             for skyfiber in skyfibers:
                 spec = Spectrum(frame.wave, frame.flux[skyfiber,:], frame.ivar[skyfiber,:])
-                flex_dict = flex_shift(camera[0], spec)
+                flex_dict = flex_shift(camera[0], spec)#, debug=True)
                 sky_QA[camera]['shifts'].append(flex_dict['shift'])
+        # Generate a Table and print to screen
+        tbl = Table()
+        cameras = []
+        shifts = []
+        for camera in sky_QA.keys():
+            cameras += [camera]*len(sky_QA[camera]['shifts'])
+            shifts += sky_QA[camera]['shifts']
+        tbl['camera'] = cameras
+        tbl['shifts'] = shifts
+        tbl.more()
+        #
         import pdb; pdb.set_trace()
 
 

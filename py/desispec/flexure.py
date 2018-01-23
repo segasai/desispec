@@ -185,6 +185,21 @@ def flex_shift(channel, obj_skyspec, mxshft=10, debug=False):
     log.info("Flexure correction of {:g} pixels".format(shift))
 
     if debug:
+        from matplotlib import pyplot as plt
+        plt.clf()
+        ax = plt.gca()
+        ax.plot(arx_skyspec.wave, arx_skyspec.flux, label='Paranal', drawstyle='steps-mid')
+        ax.plot(np.roll(obj_skyspec.wave,int(shift)), obj_skyspec.flux, 'r', label='Object', drawstyle='steps-mid')
+        #
+        ax.set_xlabel('Wavelength')
+        ax.set_ylabel('Flux')
+        if channel == 'z':
+            ax.set_xlim(8335,8390)
+            ax.set_ylim(0., 18)
+        legend = plt.legend(loc='upper left', scatterpoints=1, borderpad=0.3,
+                        handletextpad=0.3, fontsize='medium', numpoints=1)
+        plt.show()
+        plt.savefig('sky_flex.png')
         import pdb; pdb.set_trace()
         #debugger.plot1d(arx_skyspec.wavelength, arx_sky_flux, xtwo=np.roll(obj_skyspec.wavelength,int(-1*shift)), ytwo=obj_sky_flux)
         #debugger.set_trace()
