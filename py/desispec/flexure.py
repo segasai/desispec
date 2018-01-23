@@ -20,7 +20,7 @@ from desispec.spectrum import Spectrum
 from desispec.bootcalib import find_arc_lines
 
 
-def load_paranal():
+def load_orig_paranal():
     """  Load archived sky spectrum
     Returns:
         spec -- Spectrum object
@@ -34,6 +34,66 @@ def load_paranal():
     #
     return spec
 
+def load_smoothed_paranal(channel):
+    """
+    Args:
+        channel:
+
+    Returns:
+        spec :
+
+    """
+    pass
+
+def build_paranal_spectra(channel, obj_skyspec):
+    """ Generate one spectrum per channel from Parnal
+    using typical dispersion and resolutions.  Could eventually
+    make one per fiber.
+    Args:
+        channel:  str,  channel
+        obj_skyspec: Spectrum
+
+    Returns:
+
+    """
+    from astropy.convolution import convolve, Gaussian1DKernel
+    # Load archive spectrum
+    arx_skyspec = load_orig_paranal()
+
+    # DESI resolution (sigma)
+    wdisp_dict = dict(b=0.628, r=0.578, z=0.731)  # Ang
+    wvmed_dict = dict(b=4765., r=6685., z=8635.) # Ang
+    # Paranal (FWHM)
+    R_Paranal = 31300.
+    wdisp_paranal = wvmed_dict[channel] / R_Paranal
+
+    # Calculate dispersion (Angstrom per pixel)
+    arx_disp = np.append(arx_skyspec.wave[1]-arx_skyspec.wave[0],
+                         arx_skyspec.wave[1:]-arx_skyspec.wave[:-1])
+
+    # Determine sigma of gaussian for smoothing
+    arx_med_sig2 = (wdisp_paranal/(2*np.sqrt(2*np.log(2))))**2
+    obj_med_sig2 = wdisp_dict[channel]**2
+
+    # Smooth
+    smooth_sig = np.sqrt(obj_med_sig2-arx_med_sig2)  # Ang
+    smooth_sig_pix = smooth_sig / np.median(arx_disp)
+
+    # gaussian drops to 1/100 of maximum value at x =
+    # sqrt(2*ln(100))*sigma, so number of pixels to include from
+    # centre of gaussian is:
+    const100 = 3.034854259             # sqrt(2*ln(100))
+    n = np.ceil(const100 * smooth_sig_pix)
+    x_size = int(2*n) + 1  # we want this to be odd integer
+    arx_skyspec.flux = convolve(arx_skyspec.flux,
+                                Gaussian1DKernel(smooth_sig_pix, x_size=x_size),
+                                boundary='fill', fill_value=0., normalize_kernel=True)
+
+    # Determine region to save
+    imin = np.argmin(np.abs(arx_skyspec.wave-obj_skyspec.wave[0]))
+    imax = np.argmin(np.abs(arx_skyspec.wave-obj_skyspec.wave[-1]))
+
+    import pdb; pdb.set_trace()
 
 def flex_shift(channel, obj_skyspec, mxshft=10, debug=False):
     """ Calculate shift between object sky spectrum and archive sky spectrum
@@ -60,24 +120,23 @@ def flex_shift(channel, obj_skyspec, mxshft=10, debug=False):
     -------
     flex_dict
     """
-    from astropy.convolution import convolve, Gaussian1DKernel
-
-    # Load archive spectrum
-    arx_skyspec = load_paranal()
 
     # Logging
     log=get_logger()
     log.info("starting flexure shift calculation")
-    # DESI resolution (sigma)
-    wdisp_dict = dict(b=0.628, r=0.578, z=0.731)  # Ang
-    wvmed_dict = dict(b=4765., r=6685., z=8635.) # Ang
-    # Paranal (FWHM)
-    R_Paranal = 31300.
-    wdisp_paranal = wvmed_dict[channel] / R_Paranal
 
     # Find the brightest emission lines
-    arx_cent, arx_amp = find_arc_lines(arx_skyspec.flux)
-    obj_cent, obj_amp = find_arc_lines(obj_skyspec.flux)
+    #arx_cent, arx_amp = find_arc_lines(arx_skyspec.flux)
+    #obj_cent, obj_amp = find_arc_lines(obj_skyspec.flux)
+
+    # Determine region of wavelength overlap
+    min_wave = max(np.amin(arx_skyspec.wave), np.amin(obj_skyspec.wave))
+    max_wave = min(np.amax(arx_skyspec.wave), np.amax(obj_skyspec.wave))
+
+    # Define wavelengths of overlapping spectra
+    keep_idx = np.where((obj_skyspec.wave >= min_wave) &
+                        (obj_skyspec.wave <= max_wave))[0]
+
 
     '''
     #Keep only 5 brightest amplitude lines (xxx_keep is array of indices within arx_w of the 5 brightest)
@@ -99,36 +158,6 @@ def flex_shift(channel, obj_skyspec, mxshft=10, debug=False):
     msgs.info("Resolution of Archive={:g} and Observation={:g}".format(
         np.median(arx_res), np.median(obj_res)))
     '''
-
-    # Calculate dispersion (Angstrom per pixel)
-    arx_disp = np.append(arx_skyspec.wave[1]-arx_skyspec.wave[0],
-                         arx_skyspec.wave[1:]-arx_skyspec.wave[:-1])
-
-    # Determine sigma of gaussian for smoothing
-    arx_med_sig2 = (wdisp_paranal/(2*np.sqrt(2*np.log(2))))**2
-    obj_med_sig2 = wdisp_dict[channel]**2
-
-    # Smooth
-    smooth_sig = np.sqrt(obj_med_sig2-arx_med_sig2)  # Ang
-    smooth_sig_pix = smooth_sig / np.median(arx_disp)
-
-    # gaussian drops to 1/100 of maximum value at x =
-    # sqrt(2*ln(100))*sigma, so number of pixels to include from
-    # centre of gaussian is:
-    const100 = 3.034854259             # sqrt(2*ln(100))
-    n = np.ceil(const100 * smooth_sig_pix)
-    x_size = int(2*n) + 1  # we want this to be odd integer
-    arx_skyspec.flux = convolve(arx_skyspec.flux,
-                                Gaussian1DKernel(smooth_sig_pix, x_size=x_size),
-                                boundary='fill', fill_value=0., normalize_kernel=True)
-
-    # Determine region of wavelength overlap
-    min_wave = max(np.amin(arx_skyspec.wave), np.amin(obj_skyspec.wave))
-    max_wave = min(np.amax(arx_skyspec.wave), np.amax(obj_skyspec.wave))
-
-    # Define wavelengths of overlapping spectra
-    keep_idx = np.where((obj_skyspec.wave >= min_wave) &
-                         (obj_skyspec.wave <= max_wave))[0]
 
     # Rebin both spectra onto overlapped wavelength range
     # rebin onto object ALWAYS
