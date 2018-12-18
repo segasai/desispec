@@ -967,7 +967,7 @@ def prod_time_series(qa_prod, qatype, metric, xlim=None, outfile=None, close=Tru
 def prod_avg_s2n(qa_prod, outfile=None, optypes=['ELG'], xaxis='MJD',
                  fiducials=None):
     """
-    Generate a plot summarizing average S/N in a production
+    Generate a plot summarizing median S/N in a production
     for a few object types in a few cameras
 
     Args:
@@ -1028,7 +1028,7 @@ def prod_avg_s2n(qa_prod, outfile=None, optypes=['ELG'], xaxis='MJD',
                 fitfunc = funcMap['astro']
                 flux = 10 ** (-0.4 * (oplot['ref_mag'] - 22.5))
                 fit_snrs.append(fitfunc(flux, *coeff))
-            SN_vals[itype].append(np.mean(fit_snrs))
+            SN_vals[itype].append(np.median(fit_snrs))
             SN_sig[itype].append(np.std(fit_snrs))
             # Meta
             dates[itype].append(qaexp.qa_s2n.meta['DATE-OBS'])
@@ -1064,6 +1064,138 @@ def prod_avg_s2n(qa_prod, outfile=None, optypes=['ELG'], xaxis='MJD',
 
     ax.set_xlabel(xaxis)
     ax.set_ylabel('<S/N>')
+    legend = ax.legend(loc='upper right', borderpad=0.3,
+                       handletextpad=0.3, fontsize='small')
+
+    # Finish
+    plt.tight_layout(pad=0.1,h_pad=0.0,w_pad=0.0)
+    if outfile is not None:
+        plt.savefig(outfile)
+        print("Wrote QA file: {:s}".format(outfile))
+        plt.close()
+    else:  # Show
+        plt.show()
+
+
+
+def prod_delta_s2n(qa_prod, obs_meta, outfile=None, optypes=['ELG'], xaxis='MJD',
+                 fiducials=None):
+    """
+    Generate a plot summarizing average S/N in a production
+    for a few object types in a few cameras
+
+    Args:
+        qa_prod: QA_Prod object
+        outfile: str, optional
+          Output file name
+        optypes: list, optional
+          List of fiducial objects to show
+          Options are:  ELG, LRG, QSO
+        xaxis: str, optional
+          Designate x-axis.  Options are:  MJD, expid, texp
+        fiducials:
+
+    Returns:
+
+    """
+    from desisurvey import etc
+
+    markers = {'b': '*', 'r': 's', 'z': 'o'}
+    # Hard-code metrics for now
+    if fiducials is None:
+        fiducials = {}
+        fiducials['ELG'] = dict(otype='ELG', channel='r', ref_mag=23., color='g', s2n=0.085)
+        fiducials['LRG'] = dict(otype='LRG', channel='z', ref_mag=22., color='r')
+        fiducials['QSO'] = dict(otype='QSO', channel='b', ref_mag=22, color='b')
+    # Grab em
+    oplots = [fiducials[ftype] for ftype in optypes]
+    nplots = len(oplots)
+
+    # Calculate
+    SN_vals = [[] for i in range(nplots)]
+    SN_sig = [[] for i in range(nplots)]
+    exp_SN = [[] for i in range(nplots)]  # Expected S/N
+    delta_SN = [[] for i in range(nplots)]  # (True - Expected) / Expected
+    mjds = [[] for i in range(nplots)]
+    expids = [[] for i in range(nplots)]
+    texps = [[] for i in range(nplots)]
+    dates = [[] for i in range(nplots)]
+
+    # Loop on exposure
+    for qaexp in qa_prod.qa_exps:
+        if qaexp.qa_s2n is None:
+            continue
+        # Sync to meta
+        imeta = np.where(obs_meta['EXPID'] == qaexp.expid)[0][0]
+        row = obs_meta[imeta]
+        # Loop on objects to plot
+        for itype, oplot in enumerate(oplots):
+            gdobj = qaexp.qa_s2n['OBJTYPE'] == oplot['otype']
+            if not np.any(gdobj):
+                continue
+            # S/N
+            fit_snrs = []
+            for wedge in range(10):
+                gdcam = qaexp.qa_s2n['CAMERA'] == '{:s}{:d}'.format(oplot['channel'], wedge)
+                rows = gdcam & gdobj
+                if not np.any(rows):
+                    continue
+                # Grab the first one;  should be the same for all
+                idx = np.where(rows)[0][0]
+                coeff = qaexp.qa_s2n['COEFFS'][idx,:]
+                # Evaluate
+                funcMap = s2n_funcs(exptime=qaexp.qa_s2n.meta['EXPTIME'])
+                fitfunc = funcMap['astro']
+                flux = 10 ** (-0.4 * (oplot['ref_mag'] - 22.5))
+                fit_snrs.append(fitfunc(flux, *coeff))
+            SN_vals[itype].append(np.median(fit_snrs))
+            SN_sig[itype].append(np.std(fit_snrs))
+            # Exposure Meta
+            dates[itype].append(qaexp.qa_s2n.meta['DATE-OBS'])
+            texps[itype].append(qaexp.qa_s2n.meta['EXPTIME'])
+            expids[itype].append(qaexp.expid)
+            # Predict S/N from fiducial and observing meta
+            fiducial_s2n = oplot['s2n']
+            program = row['PROGRAM']
+            desired_time = etc.exposure_time(program, row['seeing'.upper()],
+                                             row['transparency'.upper()],
+                                             row['airmass'.upper()], row['EBMV'],
+                                             row['moonfrac'.upper()],
+                                             row['moonsep'.upper()],
+                                             row['moonalt'.upper()])
+            exp_SN[itype].append(np.sqrt(texps[itype][-1]/desired_time.value) * fiducial_s2n)
+            delta_SN[itype].append((SN_vals[itype][-1] - exp_SN[itype][-1])/exp_SN[itype][-1])
+
+    # A bit more prep
+    for itype, oplot in enumerate(oplots):
+        atime = Time(dates[itype], format='isot', scale='utc')
+        atime.format = 'mjd'
+        mjds[itype] = atime.value
+
+    # Setup
+    fig = plt.figure(figsize=(8, 5.0))
+    gs = gridspec.GridSpec(1,1)
+    ax = plt.subplot(gs[0])
+
+    for itype, oplot in enumerate(oplots):
+        # Empty
+        if len(dates[itype]) == 0:
+            continue
+        # Nope, let's plot
+        if xaxis == 'MJD':
+            xval = mjds[itype]
+        elif xaxis == 'expid':
+            xval = expids[itype]
+        elif xaxis == 'texp':
+            xval = texps[itype]
+        # Plot
+        ax.errorbar(xval, delta_SN[itype], #yerr=[np.zeros_like(xval)],
+                    label='{:s}: {:s} {:0.1f}'.format(
+                        oplot['otype'], oplot['channel'], oplot['ref_mag']), ls='none',
+                    color=oplot['color'], marker=markers[oplot['channel']])
+
+    ax.set_xlabel(xaxis)
+    ax.set_ylabel('(S/N_measured - S/N_expected)/S/N_expected')
     legend = ax.legend(loc='upper right', borderpad=0.3,
                        handletextpad=0.3, fontsize='small')
 
