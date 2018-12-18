@@ -1063,7 +1063,7 @@ def prod_avg_s2n(qa_prod, outfile=None, optypes=['ELG'], xaxis='MJD',
                     color=oplot['color'], marker=markers[oplot['channel']])
 
     ax.set_xlabel(xaxis)
-    ax.set_ylabel('<S/N>')
+    ax.set_ylabel('Median S/N per pixel')
     legend = ax.legend(loc='upper right', borderpad=0.3,
                        handletextpad=0.3, fontsize='small')
 
@@ -1104,7 +1104,7 @@ def prod_delta_s2n(qa_prod, obs_meta, outfile=None, optypes=['ELG'], xaxis='MJD'
     # Hard-code metrics for now
     if fiducials is None:
         fiducials = {}
-        fiducials['ELG'] = dict(otype='ELG', channel='r', ref_mag=23., color='g', s2n=0.085)
+        fiducials['ELG'] = dict(otype='ELG', channel='r', ref_mag=23., color='g', s2n=0.304)
         fiducials['LRG'] = dict(otype='LRG', channel='z', ref_mag=22., color='r')
         fiducials['QSO'] = dict(otype='QSO', channel='b', ref_mag=22, color='b')
     # Grab em
@@ -1152,7 +1152,8 @@ def prod_delta_s2n(qa_prod, obs_meta, outfile=None, optypes=['ELG'], xaxis='MJD'
             SN_sig[itype].append(np.std(fit_snrs))
             # Exposure Meta
             dates[itype].append(qaexp.qa_s2n.meta['DATE-OBS'])
-            texps[itype].append(qaexp.qa_s2n.meta['EXPTIME'])
+            texp = qaexp.qa_s2n.meta['EXPTIME']
+            texps[itype].append(texp)
             expids[itype].append(qaexp.expid)
             # Predict S/N from fiducial and observing meta
             fiducial_s2n = oplot['s2n']
@@ -1163,7 +1164,7 @@ def prod_delta_s2n(qa_prod, obs_meta, outfile=None, optypes=['ELG'], xaxis='MJD'
                                              row['moonfrac'.upper()],
                                              row['moonsep'.upper()],
                                              row['moonalt'.upper()])
-            exp_SN[itype].append(np.sqrt(texps[itype][-1]/desired_time.value) * fiducial_s2n)
+            exp_SN[itype].append(np.sqrt(texp/desired_time.value) * fiducial_s2n)
             delta_SN[itype].append((SN_vals[itype][-1] - exp_SN[itype][-1])/exp_SN[itype][-1])
 
     # A bit more prep
