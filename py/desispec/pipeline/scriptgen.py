@@ -294,7 +294,7 @@ def batch_nersc(tasks_by_type, outroot, logroot, jobname, machine, queue,
         debug (bool): if True, set DESI log level to DEBUG in the script.
 
     Returns:
-        (list): list of generated slurm files.
+        (list): list of tuples of (generated slurm file, run minutes).
 
     """
     from .tasks.base import task_classes, task_type
@@ -377,7 +377,7 @@ def batch_nersc(tasks_by_type, outroot, logroot, jobname, machine, queue,
                       queue, nodes, [ nodes ], [ ppn ], runtime, [ nworker ],
                       [ workersize ], openmp=openmp, multiproc=multiproc,
                       shifterimg=shifterimg, debug=debug)
-            scriptfiles.append(outfile)
+            scriptfiles.append(outfile, runtime)
             jindx += 1
 
     else:
@@ -421,6 +421,6 @@ def batch_nersc(tasks_by_type, outroot, logroot, jobname, machine, queue,
                   queue, fullnodes, cnodes, ppns, fullruntime, nwk, wrksz,
                   openmp=openmp, multiproc=multiproc, shifterimg=shifterimg,
                   debug=debug)
-        scriptfiles.append(outfile)
+        scriptfiles.append((outfile, fullruntime))
 
     return scriptfiles

@@ -315,7 +315,7 @@ def get_tasks_type(db, tasktype, states, nights, expid=None, spec=None):
 
 
 def get_tasks(db, tasktypes, nights, states=None, expid=None, spec=None,
-    nosubmitted=False, taskfile=None):
+    nojobs=False, taskfile=None):
     """Get tasks of multiple types that match certain criteria.
 
     Args:
@@ -325,8 +325,8 @@ def get_tasks(db, tasktypes, nights, states=None, expid=None, spec=None,
         nights (list): list of nights to select.
         expid (int): exposure ID to select.
         spec (int): spectrograph to select.
-        nosubmitted (bool): if True, ignore tasks that were already
-            submitted.
+        nojobs (bool): if True, ignore tasks that are already associated
+            with a job ID.
 
     Returns:
         list: all tasks of all types.
@@ -335,17 +335,16 @@ def get_tasks(db, tasktypes, nights, states=None, expid=None, spec=None,
     all_tasks = list()
     for tt in tasktypes:
         tasks = get_tasks_type(db, tt, states, nights, expid=expid, spec=spec)
-        if nosubmitted:
-            if (tt != "spectra") and (tt != "redshift"):
-                sb = db.get_submitted(tasks)
-                tasks = [ x for x in tasks if not sb[x] ]
+        if nojobs:
+            sb = db.get_jobid(tasks)
+            tasks = [ x for x in tasks if (sb[x] == 0) ]
         all_tasks.extend(tasks)
 
     return all_tasks
 
 
 def tasks(tasktypes, nightstr=None, states=None, expid=None, spec=None,
-    nosubmitted=False, db_postgres_user="desidev_ro", taskfile=None):
+    nojobs=False, db_postgres_user="desidev_ro", taskfile=None):
     """Get tasks of multiple types that match certain criteria.
 
     Args:
@@ -354,8 +353,7 @@ def tasks(tasktypes, nightstr=None, states=None, expid=None, spec=None,
         states (list): list of task states to select.
         expid (int): exposure ID to select.
         spec (int): spectrograph to select.
-        nosubmitted (bool): if True, ignore tasks that were already
-            submitted.
+        nojobs (bool): if True, ignore tasks already associated to a job.
         db_postgres_user (str): If using postgres, connect as this
             user for read-only access"
         taskfile (str): if set write to this file, else write to STDOUT.
@@ -380,7 +378,7 @@ def tasks(tasktypes, nightstr=None, states=None, expid=None, spec=None,
             ttypes.append(tt)
 
     all_tasks = get_tasks(db, ttypes, nights, states=states, expid=expid,
-        spec=spec, nosubmitted=nosubmitted)
+        spec=spec, nojobs=nojobs)
 
     pipeprod.task_write(taskfile, all_tasks)
 
@@ -447,14 +445,14 @@ def sync(db, nightstr=None, specdone=False):
     return
 
 
-def cleanup(db, tasktypes, failed=False, submitted=False, expid=None):
+def cleanup(db, tasktypes, failed=False, jobs=False, expid=None):
     """Clean up stale tasks in the DB.
 
     Args:
         db (DataBase): the production DB.
         tasktypes (list): list of valid task types.
         failed (bool): also clear failed states.
-        submitted (bool): also clear submitted flag.
+        jobs (bool): forcibly clear job ID.
         expid (int): only clean this exposure ID.
 
     """
@@ -463,7 +461,7 @@ def cleanup(db, tasktypes, failed=False, submitted=False, expid=None):
         exid = expid
 
     db.cleanup(tasktypes=tasktypes, expid=exid, cleanfailed=failed,
-        cleansubmitted=submitted)
+        cleanjobs=jobs)
     return
 
 
@@ -573,7 +571,7 @@ def gen_scripts(tasks_by_type, nersc=None, nersc_queue="regular",
             user for read-only access"
 
     Returns:
-        list: the generated script files
+        list: the generated script files and their runtimes.
 
     """
     ttypes = list(tasks_by_type.keys())
@@ -620,6 +618,7 @@ def gen_scripts(tasks_by_type, nersc=None, nersc_queue="regular",
     # call them here.
 
     scripts = None
+    runtimes = None
 
     if nersc is None:
         # Not running at NERSC
@@ -628,13 +627,13 @@ def gen_scripts(tasks_by_type, nersc=None, nersc_queue="regular",
             mpiprocs=mpi_procs, openmp=1, db=db)
     else:
         # Running at NERSC
-        scripts = scriptgen.batch_nersc(tasks_by_type,
+        scripts, runtimes = scriptgen.batch_nersc(tasks_by_type,
             outscript, outlog, jobname, nersc, nersc_queue,
             nersc_maxtime, nersc_maxnodes, nodeprocs=ppn,
             openmp=False, multiproc=False, db=db,
             shifterimg=nersc_shifter, debug=debug)
 
-    return scripts
+    return (scripts, runtimes)
 
 
 def script(taskfile, nersc=None, nersc_queue="regular",
@@ -674,7 +673,7 @@ def script(taskfile, nersc=None, nersc_queue="regular",
             user for read-only access"
 
     Returns:
-        list: the generated script files
+        list: the generated script files and their runtimes
 
     """
     tasks = pipeprod.task_read(taskfile)
@@ -682,7 +681,7 @@ def script(taskfile, nersc=None, nersc_queue="regular",
     scripts = list()
     if len(tasks) > 0:
         tasks_by_type = pipedb.task_sort(tasks)
-        scripts = gen_scripts(
+        scripts, runtimes = gen_scripts(
             tasks_by_type,
             nersc=nersc,
             nersc_queue=nersc_queue,
@@ -700,10 +699,11 @@ def script(taskfile, nersc=None, nersc_queue="regular",
         import warnings
         warnings.warn("Input task list is empty", RuntimeWarning)
 
-    return scripts
+    return (scripts, runtimes)
 
 
-def run_scripts(scripts, deps=None, slurm=False):
+def run_scripts(scripts, taskfiles, runtimes, deps=None, slurm=False,
+                nodb=False):
     """Run job scripts with optional dependecies.
 
     This either submits the jobs to the scheduler or simply runs them
@@ -711,9 +711,12 @@ def run_scripts(scripts, deps=None, slurm=False):
 
     Args:
         scripts (list): list of pathnames of the scripts to run.
+        taskfiles (list): list of task files used by each script.
+        runtimes (list): list of runtime minutes for each script.
         deps (list): optional list of job IDs which are dependencies for
             these scripts.
         slurm (bool): if True use slurm to submit the jobs.
+        nodb (bool): if True, do not use the production DB.
 
     Returns:
         list: the job IDs returned by the scheduler.
@@ -729,10 +732,23 @@ def run_scripts(scripts, deps=None, slurm=False):
         for d in deps:
             depstr = "{}:{}".format(depstr, d)
 
+    if not nodb:
+        # We can use the DB, set the job ID for tasks.
+        if slurm:
+            dbpath = io.get_pipe_database()
+            db = pipedb.load_db(dbpath, mode="w")
+            for tt in tasktypes:
+                db.set_jobid_type(tt, tasks_by_type[tt], int(jobids[-1]))
+
     jobids = list()
     if slurm:
         # submit each job and collect the job IDs
-        for scr in scripts:
+        for scr, trun in zip(scripts, runtimes):
+            # Add the job to the DB
+
+
+
+
             scom = "sbatch {} {}".format(depstr, scr)
             #print("RUN SCRIPTS: {}".format(scom))
             log.debug(time.asctime())
@@ -752,7 +768,7 @@ def run_scripts(scripts, deps=None, slurm=False):
     return jobids
 
 
-def run(taskfile, nosubmitted=False, depjobs=None, nersc=None,
+def run(taskfile, depjobs=None, nersc=None,
     nersc_queue="regular", nersc_maxtime=0, nersc_maxnodes=0,
     nersc_shifter=None, mpi_procs=1, mpi_run="", procs_per_node=0, nodb=False,
     out=None, debug=False):
@@ -765,8 +781,6 @@ def run(taskfile, nosubmitted=False, depjobs=None, nersc=None,
     Args:
         taskfile (str): read tasks from this file (if not specified,
             read from STDIN).
-        nosubmitted (bool): if True, do not run jobs that have already
-            been submitted.
         depjobs (list): list of job ID dependencies.
         nersc (str): if not None, the name of the nersc machine to use
             (cori-haswell | cori-knl).
@@ -803,7 +817,7 @@ def run(taskfile, nosubmitted=False, depjobs=None, nersc=None,
         tasks_by_type = pipedb.task_sort(tasks)
         tasktypes = list(tasks_by_type.keys())
         # We are packing everything into one job
-        scripts = gen_scripts(
+        scripts, runtimes = gen_scripts(
             tasks_by_type,
             nersc=nersc,
             nersc_queue=nersc_queue,
@@ -827,16 +841,8 @@ def run(taskfile, nosubmitted=False, depjobs=None, nersc=None,
             deps = depjobs
 
         # Run the jobs
-        if not nodb:
-            # We can use the DB, mark tasks as submitted.
-            if slurm:
-                dbpath = io.get_pipe_database()
-                db = pipedb.load_db(dbpath, mode="w")
-                for tt in tasktypes:
-                    if (tt != "spectra") and (tt != "redshift"):
-                        db.set_submitted_type(tt, tasks_by_type[tt])
-
         jobids = run_scripts(scripts, deps=deps, slurm=slurm)
+
     else:
         import warnings
         warnings.warn("Input task list is empty", RuntimeWarning)
@@ -845,7 +851,7 @@ def run(taskfile, nosubmitted=False, depjobs=None, nersc=None,
 
 
 def chain(tasktypes, nightstr=None, states=None, expid=None, spec=None,
-    pack=False, nosubmitted=False, depjobs=None, nersc=None,
+    pack=False, nojobs=False, depjobs=None, nersc=None,
     nersc_queue="regular", nersc_maxtime=0, nersc_maxnodes=0,
     nersc_shifter=None, mpi_procs=1, mpi_run="", procs_per_node=0, nodb=False,
     out=None, debug=False, dryrun=False):
@@ -864,8 +870,7 @@ def chain(tasktypes, nightstr=None, states=None, expid=None, spec=None,
         nights (list): list of nights to select.
         expid (int): exposure ID to select.
         pack (bool): if True, pack all tasks into a single job.
-        nosubmitted (bool): if True, do not run jobs that have already
-            been submitted.
+        nojobs (bool): if True, do not run tasks already associated with a job.
         depjobs (list): list of job ID dependencies.
         nersc (str): if not None, the name of the nersc machine to use
             (cori-haswell | cori-knl).
@@ -939,14 +944,12 @@ def chain(tasktypes, nightstr=None, states=None, expid=None, spec=None,
     tasks_by_type = OrderedDict()
 
     for tt in ttypes:
-        # Get the tasks.  We select by state and submitted status.
+        # Get the tasks.  We select by state and job status.
         tasks = get_tasks_type(db, tt, states, nights, expid=expid, spec=spec)
         #print("CHAIN:  ", tt, tasks)
-        if nosubmitted:
-            if (tt != "spectra") and (tt != "redshift"):
-                sb = db.get_submitted(tasks)
-                tasks = [ x for x in tasks if not sb[x] ]
-        #print("CHAIN:  nosubmitted:  ", tt, tasks)
+        if nojobs:
+            sb = db.get_jobid(tasks)
+            tasks = [ x for x in tasks if (sb[x] == 0) ]
 
         if len(tasks) == 0:
             import warnings
@@ -959,7 +962,7 @@ def chain(tasktypes, nightstr=None, states=None, expid=None, spec=None,
     tscripts = None
     if pack:
         # We are packing everything into one job
-        scripts = gen_scripts(
+        scripts, runtimes = gen_scripts(
             tasks_by_type,
             nersc=nersc,
             nersc_queue=nersc_queue,
@@ -1001,11 +1004,6 @@ def chain(tasktypes, nightstr=None, states=None, expid=None, spec=None,
         return None
 
     # Run the jobs
-    if slurm:
-        for tt in ttypes:
-            if (tt != "spectra") and (tt != "redshift"):
-                if tt in tasks_by_type.keys() :
-                    db.set_submitted_type(tt, tasks_by_type[tt])
 
     outdeps = None
     if pack:
@@ -1022,6 +1020,11 @@ def chain(tasktypes, nightstr=None, states=None, expid=None, spec=None,
                 indeps = outdeps
             else:
                 indeps = None
+
+    if slurm:
+        for tt in ttypes:
+            if tt in tasks_by_type.keys() :
+                db.set_jobid_type(tt, tasks_by_type[tt], int(outdeps[-1]))
 
     return outdeps
 

@@ -507,15 +507,15 @@ class DataBase:
         return
 
 
-    def get_submitted(self, tasks):
-        """Return the submitted flag for the list of tasks.
+    def get_jobid(self, tasks):
+        """Return the job ID for the list of tasks.
 
         Args:
             tasks (list): list of task names.
 
         Returns:
-            (dict): the boolean submitted state of each task (True means that
-                the task has been submitted).
+            (dict): the job ID of each task (zero means that
+                the task is not done or queued by any job).
 
         """
         from .tasks.base import task_type
@@ -523,48 +523,44 @@ class DataBase:
         taskbytype = task_sort(tasks)
 
         # Process each type
-        submitted = dict()
+        jobs = dict()
         for t, tlist in taskbytype.items():
-            if (t == "spectra") or (t == "redshift"):
-                raise RuntimeError("spectra and redshift tasks do not have submitted flag.")
             namelist = ",".join([ "'{}'".format(x) for x in tlist ])
             with self.cursor() as cur:
                 cur.execute(\
-                    'select name, submitted from {} where name in ({})'.format(t, namelist))
+                    'select name, jobid from {} where name in ({})'.format(t, namelist))
                 sb = cur.fetchall()
-                submitted.update({ x[0] : x[1] for x in sb })
-        return submitted
+                jobs.update({ x[0] : x[1] for x in sb })
+        return jobs
 
 
-    def set_submitted_type(self, tasktype, tasks, unset=False):
-        """Flag a list of tasks of a single type as submitted.
+    def set_jobid_type(self, tasktype, tasks, jobid):
+        """Mark a list of tasks of a single type as associated with a job ID.
 
         Args:
             tasktype (str): the type of these tasks.
             tasks (list): list of task names.
-            unset (bool): if True, invert the behavior and unset the submitted
-                flag for these tasks.
+            jobid (int): .the job ID to assign.
 
         Returns:
             Nothing.
 
         """
-        val = 1
-        if unset:
-            val = 0
         with self.cursor() as cur:
             for tsk in tasks:
-                cur.execute("update {} set submitted = {} where name = '{}'".format(tasktype, val, tsk))
+                cur.execute(
+                    "update {} set jobid = {} where name = '{}'"
+                    .format(tasktype, jobid, tsk)
+                )
         return
 
 
-    def set_submitted(self, tasks, unset=False):
-        """Flag a list of tasks as submitted.
+    def set_jobid(self, tasks, jobid):
+        """Mark a list of tasks as associated with a job ID.
 
         Args:
             tasks (list): list of task names.
-            unset (bool): if True, invert the behavior and unset the submitted
-                flag for these tasks.
+            jobid (int): .the job ID to assign.
 
         Returns:
             Nothing.
@@ -576,9 +572,7 @@ class DataBase:
 
         # Process each type
         for t, tlist in taskbytype.items():
-            if (t == "spectra") or (t == "redshift"):
-                raise RuntimeError("spectra and redshift tasks do not have submitted flag.")
-            self.set_submitted_type(tlist, unset=unset)
+            self.set_jobid_type(t, tlist, jobid)
         return
 
 
@@ -771,7 +765,7 @@ class DataBase:
 
 
     def cleanup(self, tasktypes=None, expid=None, cleanfailed=False,
-                cleansubmitted=False):
+                cleanjob=False):
         """Reset states of tasks.
 
         Any tasks that are marked as "running" will have their
@@ -785,7 +779,7 @@ class DataBase:
                 an expid (psfnight, fiberflatnight, spectra, redshift)
                 will be ignored if this option is given.
             cleanfailed (bool): if True, also reset failed tasks to ready.
-            cleansubmitted (bool): if True, set submitted flag to False.
+            cleanjob (bool): if True, foribly set job ID to zero.
 
         """
         tasks_running = None
@@ -823,11 +817,11 @@ class DataBase:
                         cmd = "{} )".format(cmd)
                     cur.execute(cmd)
                     tasks_running[tt] = [ x for (x, ) in cur.fetchall() ]
-                    if cleansubmitted:
+                    if cleanjob:
                         if expid is not None:
-                            cmd = "update {} set submitted = 0 where expid = {}".format(tt, expid)
+                            cmd = "update {} set jobid = 0 where expid = {}".format(tt, expid)
                         else:
-                            cmd = "update {} set submitted = 0".format(tt)
+                            cmd = "update {} set jobid = 0".format(tt)
                         cur.execute(cmd)
                 else:
                     # This task type has no concept of an exposure ID
@@ -846,10 +840,9 @@ class DataBase:
                             cmd = "{} )".format(cmd)
                         cur.execute(cmd)
                         tasks_running[tt] = [ x for (x, ) in cur.fetchall() ]
-                        if cleansubmitted:
-                            if (tt != "spectra") and (tt != "redshift"):
-                                cmd = "update {} set submitted = 0".format(tt)
-                                cur.execute(cmd)
+                        if cleanjob:
+                            cmd = "update {} set jobid = 0".format(tt)
+                            cur.execute(cmd)
 
         for tt in ttypes:
             if len(tasks_running[tt]) > 0:
@@ -963,7 +956,12 @@ class DataBase:
         with self.cursor() as cur:
             cmd = "create table healpix_frame (night integer, expid integer, spec integer, nside integer, pixel integer, ntargets integer, state integer, unique(expid, spec, nside, pixel))"
             cur.execute(cmd)
+        return
 
+    def create_job_table(self) :
+        with self.cursor() as cur:
+            cmd = "create table job (jobid integer, host text, run integer, start text, unique(jobid))"
+            cur.execute(cmd)
         return
 
 

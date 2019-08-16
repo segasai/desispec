@@ -238,8 +238,8 @@ Where supported commands are (use desi_pipe <command> --help for details):
             help="comma separated list of states (see defs.py).  Only tasks "
             "in these states will be returned.")
 
-        parser.add_argument("--nosubmitted", required=False, default=False,
-            action="store_true", help="Skip all tasks flagged as submitted")
+        parser.add_argument("--nojobs", required=False, default=False,
+            action="store_true", help="Skip all tasks associated with a job")
 
         parser.add_argument("--taskfile", required=False, default=None,
             help="write tasks to this file (if not specified, write to STDOUT)")
@@ -272,7 +272,7 @@ Where supported commands are (use desi_pipe <command> --help for details):
             states=states,
             expid=expid,
             spec=spec,
-            nosubmitted=args.nosubmitted,
+            nojobs=args.nojobs,
             db_postgres_user=args.db_postgres_user,
             taskfile=args.taskfile)
 
@@ -366,8 +366,9 @@ Where supported commands are (use desi_pipe <command> --help for details):
         parser.add_argument("--failed", required=False, default=False,
             action="store_true", help="Also clear failed states")
 
-        parser.add_argument("--submitted", required=False, default=False,
-            action="store_true", help="Also clear submitted flag")
+        parser.add_argument("--jobs", required=False, default=False,
+            action="store_true",
+            help="Forcibly clear job IDs, even if they cannot be queried.")
 
         parser.add_argument("--tasktypes", required=False, default=None,
             help="comma separated list of task types to clean ({})".format(availtypes))
@@ -392,7 +393,7 @@ Where supported commands are (use desi_pipe <command> --help for details):
             db,
             ttypes,
             failed=args.failed,
-            submitted=args.submitted,
+            jobs=args.jobs,
             expid=expid)
 
         return
@@ -573,9 +574,6 @@ Where supported commands are (use desi_pipe <command> --help for details):
             help="Read tasks from this file (if not specified, read from "
             "STDIN).  Tasks of all types will be packed into a single job!")
 
-        parser.add_argument("--nosubmitted", required=False, default=False,
-            action="store_true", help="Skip all tasks flagged as submitted")
-
         parser.add_argument("--depjobs", required=False, default=None,
             help="comma separated list of slurm job IDs to specify as "
             "dependencies of this current job.")
@@ -595,7 +593,6 @@ Where supported commands are (use desi_pipe <command> --help for details):
 
         jobids = control.run(
             args.taskfile,
-            nosubmitted=args.nosubmitted,
             depjobs=deps,
             nersc=args.nersc,
             nersc_queue=args.nersc_queue,
@@ -644,8 +641,9 @@ Where supported commands are (use desi_pipe <command> --help for details):
             action="store_true", help="Pack the chain of pipeline steps "
             "into a single job script.")
 
-        parser.add_argument("--nosubmitted", required=False, default=False,
-            action="store_true", help="Skip all tasks flagged as submitted")
+        parser.add_argument("--nojobs", required=False, default=False,
+            action="store_true",
+            help="Skip all tasks already associated with a job.")
 
         parser.add_argument("--depjobs", required=False, default=None,
             help="comma separated list of slurm job IDs to specify as "
@@ -683,7 +681,7 @@ Where supported commands are (use desi_pipe <command> --help for details):
             expid=expid,
             spec=spec,
             pack=args.pack,
-            nosubmitted=args.nosubmitted,
+            nojobs=args.nojobs,
             depjobs=deps,
             nersc=args.nersc,
             nersc_queue=args.nersc_queue,
@@ -718,6 +716,7 @@ Where supported commands are (use desi_pipe <command> --help for details):
         parser.add_argument("--states", required=False, default=None,
             help="comma separated list of states. This argument is "
             "passed to chain (see desi_pipe chain --help for more info).")
+
         parser.add_argument("--resume", action = 'store_true',
             help="same as --states waiting,ready")
 
@@ -903,7 +902,7 @@ Where supported commands are (use desi_pipe <command> --help for details):
         header_state = ""
         for s in pipe.task_states:
             header_state = "{} {:8s}|".format(header_state, s)
-        header_state = "{} {:8s}|".format(header_state, "submit")
+        header_state = "{} {:8s}|".format(header_state, "in job")
 
         sep = "----------------+---------+---------+---------+---------+---------+---------+"
 
@@ -912,7 +911,7 @@ Where supported commands are (use desi_pipe <command> --help for details):
 
         def print_status(clear=False):
             taskstates = {}
-            tasksub = {}
+            taskjobs = {}
             with db.cursor() as cur:
                 for t in tasktypes:
                     taskstates[t] = {}
@@ -922,11 +921,10 @@ Where supported commands are (use desi_pipe <command> --help for details):
                     for s in pipe.task_states:
                         taskstates[t][s] = \
                             np.sum(st == pipe.task_state_to_int[s])
-                    if (t != "spectra") and (t != "redshift"):
-                        cmd = "select submitted from {}".format(t)
-                        cur.execute(cmd)
-                        isub = [ int(x[0]) for x in cur.fetchall() ]
-                        tasksub[t] = np.sum(isub).astype(int)
+                    cmd = "select jobid from {}".format(t)
+                    cur.execute(cmd)
+                    jobid = [ 1 if x[0] > 0 else 0 for x in cur.fetchall() ]
+                    taskjobs[t] = np.sum(jobid).astype(int)
             if clear:
                 print("\033c")
             print(header)
@@ -934,8 +932,8 @@ Where supported commands are (use desi_pipe <command> --help for details):
                 line = "{:16s}|".format(t)
                 for s in pipe.task_states:
                     line = "{}{:9d}|".format(line, taskstates[t][s])
-                if t in tasksub:
-                    line = "{}{:9d}|".format(line, tasksub[t])
+                if t in taskjobs:
+                    line = "{}{:9d}|".format(line, taskjobs[t])
                 else:
                     line = "{}{:9s}|".format(line, "       NA")
                 print(line)

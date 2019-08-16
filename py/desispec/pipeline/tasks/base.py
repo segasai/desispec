@@ -142,7 +142,7 @@ class BaseTask(object):
             createstr = "create table {} (name text unique".format(self._type)
             for col in zip(self._cols, self._coltypes):
                 createstr = "{}, {} {}".format(createstr, col[0], col[1])
-            createstr = "{}, submitted integer)".format(createstr)
+            createstr = "{}, jobid integer)".format(createstr)
             cur.execute(createstr)
         return
 
@@ -182,7 +182,7 @@ class BaseTask(object):
                     valstr += ", '{}'".format(props[k])
                 else:
                     valstr += ', {}'.format(props[k])
-        colstr += ', submitted)'
+        colstr += ', jobid)'
         valstr += ', 0)'
 
         cmd = 'insert into {} {} values {}'.format(self._type, colstr, valstr)
