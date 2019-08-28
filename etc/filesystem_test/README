@@ -1,0 +1,5 @@
+This is a small example script which accesses the filesystem in a way
+that is similar to the spectroscopic pipeline.  You can generate
+example slurm scripts for use at NERSC with:
+
+$>  ./gen_slrm.sh template

@@ -1,0 +1,323 @@
+#!/usr/bin/env python
+
+from __future__ import (
+    absolute_import,
+    division,
+    print_function,
+    unicode_literals,
+    with_statement,
+)
+
+from mpi4py import MPI
+
+import sys
+import os
+import argparse
+import logging
+import time
+import datetime
+from contextlib import contextmanager
+
+import numpy as np
+
+
+@contextmanager
+def stdouterr_redirected(to=None, comm=None):
+    """
+    Redirect stdout and stderr to a file.
+
+    The general technique is based on:
+
+    http://stackoverflow.com/questions/5081657
+    http://eli.thegreenplace.net/2015/redirecting-all-kinds-of-stdout-in-python/
+
+    One difference here is that each process in the communicator
+    redirects to a different temporary file, and the upon exit
+    from the context the rank zero process concatenates these
+    in order to the file result.
+
+    Args:
+        to (str): The output file name.
+        comm (mpi4py.MPI.Comm): The optional MPI communicator.
+    """
+    nproc = 1
+    rank = 0
+    if comm is not None:
+        nproc = comm.size
+        rank = comm.rank
+
+    # The currently active POSIX file descriptors
+    fd_out = sys.stdout.fileno()
+    fd_err = sys.stderr.fileno()
+
+    # Get the default logger
+    logger = logging.getLogger()
+
+    def _redirect(out_to, err_to):
+
+        # Flush the C-level buffers
+        if c_stdout is not None:
+            libc.fflush(c_stdout)
+        if c_stderr is not None:
+            libc.fflush(c_stderr)
+
+        # This closes the python file handles, and marks the POSIX
+        # file descriptors for garbage collection- UNLESS those
+        # are the special file descriptors for stderr/stdout.
+        sys.stdout.close()
+        sys.stderr.close()
+
+        # Close fd_out/fd_err if they are open, and copy the
+        # input file descriptors to these.
+        os.dup2(out_to, fd_out)
+        os.dup2(err_to, fd_err)
+
+        # Create a new sys.stdout / sys.stderr that points to the
+        # redirected POSIX file descriptors.  In Python 3, these
+        # are actually higher level IO objects.
+        if sys.version_info[0] < 3:
+            sys.stdout = os.fdopen(fd_out, "wb")
+            sys.stderr = os.fdopen(fd_err, "wb")
+        else:
+            # Python 3 case
+            sys.stdout = io.TextIOWrapper(os.fdopen(fd_out, "wb"))
+            sys.stderr = io.TextIOWrapper(os.fdopen(fd_err, "wb"))
+
+        # update logger to use new stdout
+        hformat = None
+        while len(logger.handlers) > 0:
+            h = logger.handlers[0]
+            if hformat is None:
+                hformat = h.formatter._fmt
+            logger.removeHandler(h)
+        # Add the current stdout.
+        ch = logging.StreamHandler(sys.stdout)
+        formatter = logging.Formatter(hformat, datefmt="%Y-%m-%dT%H:%M:%S")
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
+
+    # redirect both stdout and stderr to the same file
+
+    if to is None:
+        to = "/dev/null"
+
+    if rank == 0:
+        logger.info("Begin log redirection to {} at {}".format(to, time.asctime()))
+
+    # Save the original file descriptors so we can restore them later
+    saved_fd_out = os.dup(fd_out)
+    saved_fd_err = os.dup(fd_err)
+
+    try:
+        pto = to
+        if to != "/dev/null":
+            pto = "{}_{}".format(to, rank)
+
+        # open python file, which creates low-level POSIX file
+        # descriptor.
+        file = open(pto, "w")
+
+        # redirect stdout/stderr to this new file descriptor.
+        _redirect(out_to=file.fileno(), err_to=file.fileno())
+
+        yield  # allow code to be run with the redirected output
+
+        # close python file handle, which will mark POSIX file
+        # descriptor for garbage collection.  That is fine since
+        # we are about to overwrite those in the finally clause.
+        file.close()
+
+    finally:
+        # restore old stdout and stderr
+        _redirect(out_to=saved_fd_out, err_to=saved_fd_err)
+
+        if nproc > 1:
+            comm.barrier()
+
+        # concatenate per-process files
+        if rank == 0:
+            with open(to, "w") as outfile:
+                for p in range(nproc):
+                    outfile.write(
+                        "================= Process {} =================\n".format(p)
+                    )
+                    fname = "{}_{}".format(to, p)
+                    with open(fname) as infile:
+                        outfile.write(infile.read())
+                    os.remove(fname)
+
+        if nproc > 1:
+            comm.barrier()
+
+        if rank == 0:
+            logger.info("End log redirection to {} at {}".format(to, time.asctime()))
+
+        # flush python handles for good measure
+        sys.stdout.flush()
+        sys.stderr.flush()
+
+    return
+
+
+def task_dir(chunk, tsk):
+    """Return the output subdirectory for the given task.
+    """
+    tgroup = tsk // chunk
+    tfirst = tgroup * chunk
+    tlast = (tgroup + 1) * chunk - 1
+    tdir = "tasks_{:06}-{:06}".format(tfirst, tlast)
+    return tdir
+
+
+def do_work(taskid, comm):
+    """Simulate an MPI sub-communicator doing some work.
+
+    Every process logs independently and data is returned on the root
+    process.
+    """
+    log = logging.getLogger()
+    rank = 0
+    data = None
+    ndata = 10000000
+    if comm is not None:
+        rank = comm.rank
+        data = np.random.random(size=ndata)
+    time.sleep(np.random.randint(0, 5))
+    log.info("Task {}, rank {}:  {} samples".format(taskid, rank, ndata))
+    if comm is not None:
+        comm.barrier()
+    return data
+
+
+def main():
+    start = datetime.datetime.now()
+
+    # Global communicator
+    comm = MPI.COMM_WORLD
+    rank = comm.rank
+    nproc = comm.size
+
+    log = logging.getLogger()
+
+    if rank == 0:
+        log.info("Starting python main at {}".format(str(start)))
+
+    # Arguments
+
+    parser = argparse.ArgumentParser(
+        description="Test filesystem access patterns that match the DESI pipeline."
+    )
+    parser.add_argument(
+        "--out",
+        required=False,
+        type=str,
+        default=None,
+        help="The output directory where the 'desi_fs_test' directory is created",
+    )
+    parser.add_argument(
+        "--worker_size",
+        required=False,
+        type=int,
+        default=1,
+        help="The number of MPI processes in a worker.",
+    )
+    parser.add_argument(
+        "--tasks_per_worker",
+        required=False,
+        type=int,
+        default=10,
+        help="The number of fake tasks per worker.",
+    )
+    parser.add_argument(
+        "--tasks_per_dir",
+        required=False,
+        type=int,
+        default=2000,
+        help="The number of task outputs in a single directory",
+    )
+
+    args = parser.parse_args()
+
+    # Split global communicator into workers (process groups)
+
+    comm_group = None
+    comm_rank = comm
+
+    group = rank
+    ngroup = nproc
+    group_rank = 0
+
+    workersize = args.worker_size
+
+    if args.worker_size > 1:
+        ngroup = nproc // workersize
+        group = rank // workersize
+        group_rank = rank % workersize
+        comm_group = comm.Split(color=group, key=group_rank)
+        comm_rank = comm.Split(color=group_rank, key=group)
+
+    out = args.out
+    if out is None:
+        if "SCRATCH" in os.environ.keys():
+            out = os.environ["SCRATCH"]
+        else:
+            out = os.path.abspath(".")
+
+    outdir = os.path.join(out, "desi_fs_test")
+    outlogs = os.path.join(outdir, "logs")
+    outdata = os.path.join(outdir, "data")
+
+    nlocal = args.tasks_per_worker
+    ntask = nproc * nlocal
+    taskchunk = args.tasks_per_dir
+    ntaskdirs = ntask // taskchunk
+    if ntaskdirs * taskchunk != ntask:
+        ntaskdirs += 1
+
+    if rank == 0:
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
+        if not os.path.isdir(outlogs):
+            os.makedirs(outlogs)
+        if not os.path.isdir(outdata):
+            os.makedirs(outdata)
+        for td in range(ntaskdir):
+            tdir = task_dir(taskchunk, td * taskchunk)
+            tlogs = os.path.join(outlogs, tdir)
+            if not os.path.isdir(tlogs):
+                os.makedirs(tlogs)
+            tdata = os.path.join(outdata, tdir)
+            if not os.path.isdir(tdata):
+                os.makedirs(tdata)
+
+    # Every worker goes through their tasks
+    if group < ngroup:
+        # Only whole worker groups are given tasks.
+        for tsk in range(nlocal):
+            taskid = rank * nlocal + tsk
+            tasksubdir = task_dir(taskchunk, taskid)
+            tasklogdir = os.path.join(outlogs, tasksubdir)
+            taskdatadir = os.path.join(outdata, tasksubdir)
+            tasklog = os.path.join(tasklogdir, "task_{:06}.log".format(taskid))
+            with stdouterr_redirected(to=tasklog, comm=comm_group):
+                taskdata = do_work(taskid, comm_group)
+                taskdataout = os.path.join(taskdatadir, "task_{:06}".format(taskid))
+                if comm_group is None or (comm_group.rank == 0):
+                    np.save(
+                        taskdataout, taskdata, allow_pickle=False, fix_imports=False
+                    )
+    comm.barrier()
+    end = datetime.datetime.now()
+    if rank == 0:
+        dt = end - start
+        minutes, seconds = dt.seconds // 60, dt.seconds % 60
+        log.info("Run time: {} min {} sec".format(minutes, seconds))
+        sys.stdout.flush()
+    return
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except:
+        MPI.COMM_WORLD.Abort(1)
