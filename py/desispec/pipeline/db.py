@@ -960,7 +960,7 @@ class DataBase:
 
     def create_job_table(self) :
         with self.cursor() as cur:
-            cmd = "create table job (jobid integer, host text, run integer, start text, unique(jobid))"
+            cmd = "create table job (jobid integer, host text, run integer, start text, timeout integer, unique(jobid))"
             cur.execute(cmd)
         return
 
@@ -1079,6 +1079,8 @@ class DataBaseSqlite(DataBase):
 
         if "healpix_frame" not in tables_in_db:
             self.create_healpix_frame_table()
+        if "job" not in tables_in_db:
+            self.create_job_table()
         return
 
 
@@ -1272,7 +1274,8 @@ class DataBasePostgres(DataBase):
 
         if "healpix_frame" not in tables_in_db:
             self.create_healpix_frame_table()
-
+        if "job" not in tables_in_db:
+            self.create_job_table()
         return
 
 
