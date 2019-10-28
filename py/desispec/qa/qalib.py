@@ -739,6 +739,7 @@ def SNRFit(frame,night,camera,expid,params,fidboundary=None,
                             fita=guess[0]
                             fitb=guess[1]
                 #- Increase granualarity of 'a' by a factor of 10
+                fitc, fitd = fita, fitb
                 for c in range(100):
                     for d in range(100):
                         guess=[fita-0.05+0.001*c,0.1*d]
@@ -748,7 +749,8 @@ def SNRFit(frame,night,camera,expid,params,fidboundary=None,
                             singlechi2=((y[k]-fitdata[k])/objvar[k])**2
                             totchi2.append(singlechi2)
                         chi2=np.sum(totchi2)
-                        if chi2<=minchi2:
+                        # Did things improve?
+                        if chi2 <= minchi2:
                             minchi2=chi2
                             fitc=guess[0]
                             fitd=guess[1]
