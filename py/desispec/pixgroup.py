@@ -498,12 +498,26 @@ def frames2spectra(frames, pix=None, nside=64):
                 if xf.scores is not None:
                     scores[x].append(xf.scores)
 
+
         flux[x] = np.vstack(flux[x])
 
         ivar[x] = np.vstack(ivar[x])
         mask[x] = np.vstack(mask[x])
         resolution_data[x] = np.vstack(resolution_data[x])
         if x == bands[0]:
+            #- HACK to work around missing NUM_ITER and diff column order
+            for i in range(len(fibermap)):
+                if 'NUM_ITER' not in fibermap[i].colnames:
+                    fibermap[i]['NUM_ITER'] = -1
+
+                if fibermap[i].colnames != fibermap[0].colnames:
+                    fibermap[i] = fibermap[i][fibermap[0].colnames]
+                fibermap[i].replace_column('NUM_ITER', fibermap[i]['NUM_ITER'].astype(np.int64))
+                fibermap[i].replace_column('LOCATION', fibermap[i]['LOCATION'].astype('>i4'))
+
+            #- end HACK
+
+            #- combine fibermaps
             fibermap = np.hstack(fibermap)
 
         if len(scores[x]) > 0:
