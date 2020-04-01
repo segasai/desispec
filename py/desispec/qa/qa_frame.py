@@ -291,6 +291,10 @@ def qaframe_from_frame(frame_file, specprod_dir=None, make_plots=False, qaprod_d
     else:
         write = True
     qaframe = load_qa_frame(qafile, frame_meta, flavor=frame_meta['FLAVOR'])
+
+    # Bias
+    #if frame_meta['FLAVOR'] in ['bias']:
+
     # Flat QA
     if frame_meta['FLAVOR'] in ['flat']:
         fiberflat_fil = meta.findfile('fiberflat', night=night, camera=camera, expid=expid,
