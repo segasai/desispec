@@ -324,6 +324,9 @@ def preproc(rawimage, header, primary_header, bias=True, dark=True, pixflat=True
         mask : 2D mask of image (0=good)
         readnoise : 2D per-pixel readnoise of image
         meta : metadata dictionary
+            OVERSCNX -- Median overscan in ADUs from overscan_col in Amp X
+            OBSRDNX -- Median read noise from overscan_col in Amp X
+            GAINX -- Gain applied to Amp X
         TODO: define what keywords are included
 
     preprocessing includes the following steps:
@@ -351,7 +354,7 @@ def preproc(rawimage, header, primary_header, bias=True, dark=True, pixflat=True
     log=get_logger()
 
     header = header.copy()
-    
+
     cfinder = None
     
     if ccd_calibration_filename is not False :
