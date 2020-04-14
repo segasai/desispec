@@ -129,14 +129,15 @@ def get_fiberbitmask_comparison_value(kind='fluxcalib'):
     
 def get_skysub_fiberbitmask_val():
     #return (fmsk.BROKENFIBER | fmsk.BADTARGET | fmsk.BADFIBER | fmsk.BADTRACE | \
-    #        fmsk.MANYBADCOL | fmsk.MANYREJECTED)
+    #        fmsk.MANYBADCOL | fmsk.MANYREJECTED)    
     return get_all_fiberbitmask_val()
     
 def get_flat_fiberbitmask_val():
     #return (fmsk.BROKENFIBER | fmsk.BADTARGET | fmsk.BADFIBER | fmsk.BADTRACE | \
     #        fmsk.MANYBADCOL | fmsk.MANYREJECTED | fmsk.BADARC)
-    return get_all_fiberbitmask_val()
-    
+    return (fmsk.BROKENFIBER | fmsk.BADFIBER | fmsk.BADTRACE | fmsk.BADARC | \
+            fmsk.MANYBADCOL | fmsk.MANYREJECTED )
+
 def get_fluxcalib_fiberbitmask_val():
     #return (fmsk.BROKENFIBER | fmsk.BADTARGET | fmsk.BADFIBER | fmsk.BADTRACE | \
     #        fmsk.MANYBADCOL | fmsk.MANYREJECTED | fmsk.BADARC | fmsk.BADFLAT)
@@ -146,8 +147,30 @@ def get_stdstars_fiberbitmask_val():
     #return (fmsk.BROKENFIBER | fmsk.BADTARGET | fmsk.BADFIBER | fmsk.BADTRACE | \
     #        fmsk.MANYBADCOL | fmsk.MANYREJECTED | fmsk.BADARC | fmsk.BADFLAT)
     return get_all_fiberbitmask_val()
-    
-def get_all_fiberbitmask_val():
+
+def get_all_nonamp_fiberbitmask_val():
     return (fmsk.STUCKPOSITIONER | fmsk.BROKENFIBER | fmsk.BADTARGET | fmsk.MISSINGPOSITION | fmsk.BADPOSITION | \
             fmsk.BADFIBER | fmsk.BADTRACE | fmsk.BADARC | fmsk.BADFLAT | \
-            fmsk.MANYBADCOL | fmsk.MANYREJECTED | fmsk.BADAMP )
+            fmsk.MANYBADCOL | fmsk.MANYREJECTED )
+
+
+def get_justamps_fiberbitmask():
+    return ( fmsk.BADAMPB | fmsk.BADAMPR | fmsk.BADAMPZ )
+
+def get_all_fiberbitmask_with_amp(band):
+    nonamp_mask = get_all_nonamp_fiberbitmask_val()
+    if band.lower()[0] == 'b':
+        amp_mask = fmsk.BADAMPB
+    elif band.lower()[0] == 'r':
+        amp_mask = fmsk.BADAMPR
+    elif band.lower()[0] == 'z':
+        amp_mask = fmsk.BADAMPZ
+    else:
+        log = get_logger()
+        log.error("Didn't recognize band={}".format(band))
+        amp_mask = np.int32(0)                  
+
+    return ( nonamp_mask | amp_mask )
+
+def get_all_fiberbitmask_val():
+    return ( get_all_nonamp_fiberbitmask_val() | get_justamps_fiberbitmask() )
