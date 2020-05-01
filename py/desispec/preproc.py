@@ -381,9 +381,9 @@ def preproc(rawimage, header, primary_header, bias=True, dark=True, pixflat=True
         readnoise : 2D per-pixel readnoise of image
         meta : metadata dictionary
             OVERSCNX -- Median overscan in ADUs from overscan_col in Amp X
+            OVERROWX -- Median overscan in ADUs from overscan_row in Amp X
             OBSRDNX -- Median read noise from overscan_col in Amp X
             GAINX -- Gain applied to Amp X
-        TODO: define what keywords are included
 
     preprocessing includes the following steps:
         - bias image subtraction
@@ -627,6 +627,7 @@ def preproc(rawimage, header, primary_header, bias=True, dark=True, pixflat=True
             else:
                 o,r = _overscan(overscan_row)
                 data -= o
+            header['OVERROW'+amp] = (np.median(overscan_row),'ADUs (gain not applied)')
 
         #- apply saturlev (defined in ADU), prior to multiplication by gain
         saturated = (rawimage[jj]>=saturlev)
@@ -828,3 +829,20 @@ def read_mask(filename=None, camera=None, dateobs=None):
         raise NotImplementedError
     else:
         return fits.getdata(filename, 0)
+
+
+def qa_zero(rawfilename):
+
+    hdul = fits.open(rawfilename)
+
+    img = preproc.preproc(hdu.data, hdu.header, hdul[0].header, pixflat=False, mask=False,
+                          nocrosstalk=True, ccd_calibration_filename=calib_file,
+                          use_overscan_row=use_overscan_row,
+                          dark=False, flag_savgol=False, bias_img=bimg)
+    # Stats
+    amp_ids = preproc.get_amp_ids(hdu.header)
+    for amp in amp_ids:
+        kk = preproc.parse_sec_keyword(hdu.header['CCDSEC' + amp])
+        zero, rms = preproc._overscan(img.pix[kk])
+        tdict[lbias + amp + '_zero'] = [zero]
+        tdict[lbias + amp + '_rms'] = [rms]

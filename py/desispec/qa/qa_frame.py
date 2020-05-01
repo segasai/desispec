@@ -82,6 +82,20 @@ class QA_Frame(object):
             if key not in self.qa_data[qatype]['PARAMS']:
                 self.qa_data[qatype]['PARAMS'][key] = param[key]
 
+    def init_zero(self, re_init=False):
+        """
+        Initialize parameters for ZERO images
+
+        Args:
+            re_init (bool, optional):
+        """
+        assert self.flavor in ['zero']
+
+        zero_dict = desi_params['qa']['zero']['PARAMS']
+
+        # Init
+        self.init_qatype('ZERO', zero_dict, re_init=re_init)
+
     def init_fiberflat(self, re_init=False):
         """Initialize parameters for FIBERFLAT QA
         QA method is desispec.fiberflat.qa_fiberflat
@@ -95,12 +109,8 @@ class QA_Frame(object):
         assert self.flavor in ['flat']
 
         # Standard FIBERFLAT input parameters
-        fflat_dict = dict(MAX_N_MASK=20000,  # Maximum number of pixels to mask
-                          MAX_SCALE_OFF=0.05,  # Maximum offset in counts (fraction)
-                          MAX_OFF=0.15,       # Maximum offset from unity
-                          MAX_MEAN_OFF=0.05,  # Maximum offset in mean of fiberflat
-                          MAX_RMS=0.02,      # Maximum RMS in fiberflat
-                          )
+        fflat_dict = desi_params['qa']['fiberflat']['PARAMS']
+
         # Init
         self.init_qatype('FIBERFLAT', fflat_dict, re_init=re_init)
 
@@ -268,7 +278,6 @@ def qaframe_from_frame(frame_file, specprod_dir=None, make_plots=False, qaprod_d
     from desispec.qa import qa_plots
     from desispec.io.sky import read_sky
     from desispec.io.fluxcalibration import read_flux_calibration
-    from desispec.qa import qa_plots_ql
     from desispec.calibfinder import CalibFinder
 
     if '/' in frame_file:  # If present, assume full path is used here
@@ -291,9 +300,6 @@ def qaframe_from_frame(frame_file, specprod_dir=None, make_plots=False, qaprod_d
     else:
         write = True
     qaframe = load_qa_frame(qafile, frame_meta, flavor=frame_meta['FLAVOR'])
-
-    # Bias
-    #if frame_meta['FLAVOR'] in ['bias']:
 
     # Flat QA
     if frame_meta['FLAVOR'] in ['flat']:
