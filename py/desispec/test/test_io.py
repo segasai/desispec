@@ -2,9 +2,8 @@
 # -*- coding: utf-8 -*-
 """Test desispec.io.
 """
-from __future__ import absolute_import, division
-# The line above will help with 2to3 support.
 import unittest
+from unittest.mock import patch, MagicMock
 import os
 import sys
 import tempfile
@@ -16,12 +15,6 @@ from astropy.io import fits
 from astropy.table import Table
 from ..frame import Frame
 
-skipMock = False
-try:
-    from unittest.mock import patch
-except ImportError:
-    # Python 2
-    skipMock = True
 
 class TestIO(unittest.TestCase):
     """Test desispec.io.
@@ -207,7 +200,6 @@ class TestIO(unittest.TestCase):
     #- Some macs fail `assert_called_with` tests due to equivalent paths
     #- of `/private/var` vs. `/var`, so skip this test on Macs.
     @unittest.skipIf(sys.platform == 'darwin', "Skipping memmap test on Mac.")
-    @unittest.skipIf(skipMock, "Skipping test that requires unittest.mock.")
     def test_supports_memmap(self):
         """Test utility to detect when memory-mapping is not possible.
         """
@@ -766,31 +758,38 @@ class TestIO(unittest.TestCase):
         night1 = find_exposure_night(150)
         self.assertEqual(night1, '20150102')
 
-    @unittest.skipUnless(os.path.exists(os.path.join(os.environ['HOME'],'.netrc')),"No ~/.netrc file detected.")
-    @unittest.skipIf(True, "NERSC is out; download will fail")
-    def test_download(self):
+    # @unittest.skipUnless(os.path.exists(os.path.join(os.environ['HOME'], '.netrc')), "No ~/.netrc file detected.")
+    @patch('desispec.io.download.get')
+    @patch('desispec.io.download.netrc')
+    def test_download(self, mock_netrc, mock_get):
         """Test desiutil.io.download.
         """
+        mock_netrc.authenticators.return_value = ('desi', 'foo', 'not-a-real-password')
+        r = mock_get.return_value = MagicMock()
+        r.status_code = 200
+        r.content = b'This is a fake file.'
+        r.headers = dict()
+        r.headers['last-modified'] = 'Sun, 10 May 2015 11:45:22 MST'
         #
         # Test by downloading a single file.  This sidesteps any issues
         # with running multiprocessing within the unittest environment.
         #
         from ..io.meta import findfile
         from ..io.download import download
-        filename = findfile('sky',expid=2,night='20150510',camera='b0',spectrograph=0)
+        filename = findfile('sky', expid=2, night='20150510', camera='b0', spectrograph=0)
         paths = download(filename)
-        self.assertEqual(paths[0],filename)
+        self.assertEqual(paths[0], filename)
         self.assertTrue(os.path.exists(paths[0]))
         #
         # Deliberately test a non-existent file.
         #
-        filename = findfile('sky',expid=2,night='20150510',camera='b9',spectrograph=9)
-        paths = download(filename)
-        self.assertIsNone(paths[0])
+        # filename = findfile('sky', expid=2, night='20150510', camera='b9', spectrograph=9)
+        # paths = download(filename)
+        # self.assertIsNone(paths[0])
         # self.assertFalse(os.path.exists(paths[0]))
 
     def test_create_camword(self):
-        """ Test desispec.io.create_camword                                                                  
+        """ Test desispec.io.create_camword
         """
         from ..io.util import create_camword
         # Create some lists to convert
@@ -816,7 +815,7 @@ class TestIO(unittest.TestCase):
         """ Test desispec.io.decode_camword
         """
         from ..io.util import decode_camword
-        # Create some lists to convert                                                                    
+        # Create some lists to convert
         cameras1 = ['b0', 'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'r0',\
                     'r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9', 'z0', 'z1',\
                     'z2', 'z3', 'z4', 'z5', 'z6', 'z7', 'z8', 'z9']
@@ -830,13 +829,13 @@ class TestIO(unittest.TestCase):
         camword1 = 'a0123456789'
         camword2 = 'a01234567b89r89'
         camword3 = 'a01235679b8r48z4'
-            
+
         for cameras,camword in zip([cameras1,cameras2,cameras3],\
                                    [camword1,camword2,camword3]):
             decoded = decode_camword(camword)
             for ii in range(len(decoded)):
                 self.assertEqual(str(decoded[ii]),str(cameras[ii]))
-        
+
 def test_suite():
     """Allows testing of only this module with the command::
 
