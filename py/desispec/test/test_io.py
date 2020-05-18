@@ -771,7 +771,6 @@ class TestIO(unittest.TestCase):
         r.content = b'This is a fake file.'
         r.headers = dict()
         r.headers['last-modified'] = 'Sun, 10 May 2015 11:45:22 MST'
-        n.authenticators.assert_called_with('data.desi.lbl.gov')
         #
         # Test by downloading a single file.  This sidesteps any issues
         # with running multiprocessing within the unittest environment.
@@ -782,6 +781,7 @@ class TestIO(unittest.TestCase):
         paths = download(filename)
         self.assertEqual(paths[0], filename)
         self.assertTrue(os.path.exists(paths[0]))
+        n.authenticators.assert_once_called_with('data.desi.lbl.gov')
         #
         # Deliberately test a non-existent file.
         #

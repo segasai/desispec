@@ -16,13 +16,18 @@ from requests import get
 from requests.auth import HTTPDigestAuth
 from .meta import specprod_root
 
+_auth_cache = dict()
 
 def _auth(machine='data.desi.lbl.gov'):
     """Get authentication credentials.
     """
-    n = netrc()
-    u,foo,p = n.authenticators(machine)
-    return HTTPDigestAuth(u,p)
+    try:
+        r = _auth_cache[machine]
+    except KeyError:
+        n = netrc()
+        u, foo, p = n.authenticators(machine)
+        r = _auth_cache[machine] = HTTPDigestAuth(u, p)
+    return r
 
 
 def filepath2url(path, baseurl='https://data.desi.lbl.gov/desi',
