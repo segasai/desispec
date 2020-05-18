@@ -604,10 +604,10 @@ class TestIO(unittest.TestCase):
         self.assertEqual(file1, file2)
 
         url1 = filepath2url(file1)
-        url2 = os.path.join('https://portal.nersc.gov/project/desi',
-            'collab','spectro','redux',os.environ['SPECPROD'],'exposures',
-            str(kwargs['night']),'{expid:08d}'.format(**kwargs),
-            os.path.basename(file1))
+        url2 = os.path.join('https://data.desi.lbl.gov/project/desi',
+                            'spectro', 'redux', os.environ['SPECPROD'], 'exposures',
+                            str(kwargs['night']),'{expid:08d}'.format(**kwargs),
+                            os.path.basename(file1))
         self.assertEqual(url1, url2)
 
         #
@@ -764,7 +764,7 @@ class TestIO(unittest.TestCase):
     def test_download(self, mock_netrc, mock_get):
         """Test desiutil.io.download.
         """
-        mock_netrc.authenticators.return_value = ('desi', 'foo', 'not-a-real-password')
+        mock_netrc().authenticators.return_value = ('desi', 'foo', 'not-a-real-password')
         r = mock_get.return_value = MagicMock()
         r.status_code = 200
         r.content = b'This is a fake file.'

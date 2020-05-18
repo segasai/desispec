@@ -26,7 +26,7 @@ def _auth(machine='data.desi.lbl.gov'):
 
 
 def filepath2url(path, baseurl='https://data.desi.lbl.gov/desi',
-                 release='collab', specprod=None):
+                 release='', specprod=None):
     """Convert a fully-qualified file path to a URL.
 
     Args:
@@ -37,7 +37,7 @@ def filepath2url(path, baseurl='https://data.desi.lbl.gov/desi',
     """
     if specprod is None:
         specprod = specprod_root()
-    if release != 'collab':
+    if release:
         if not release.startswith('release'):
             release = join('release', release)
     return path.replace(specprod,
