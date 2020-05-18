@@ -604,7 +604,7 @@ class TestIO(unittest.TestCase):
         self.assertEqual(file1, file2)
 
         url1 = filepath2url(file1)
-        url2 = os.path.join('https://data.desi.lbl.gov/project/desi',
+        url2 = os.path.join('https://data.desi.lbl.gov/desi',
                             'spectro', 'redux', os.environ['SPECPROD'], 'exposures',
                             str(kwargs['night']),'{expid:08d}'.format(**kwargs),
                             os.path.basename(file1))
@@ -764,12 +764,14 @@ class TestIO(unittest.TestCase):
     def test_download(self, mock_netrc, mock_get):
         """Test desiutil.io.download.
         """
-        mock_netrc().authenticators.return_value = ('desi', 'foo', 'not-a-real-password')
+        n = mock_netrc()
+        n.authenticators.return_value = ('desi', 'foo', 'not-a-real-password')
         r = mock_get.return_value = MagicMock()
         r.status_code = 200
         r.content = b'This is a fake file.'
         r.headers = dict()
         r.headers['last-modified'] = 'Sun, 10 May 2015 11:45:22 MST'
+        n.authenticators.assert_called_with('data.desi.lbl.gov')
         #
         # Test by downloading a single file.  This sidesteps any issues
         # with running multiprocessing within the unittest environment.
