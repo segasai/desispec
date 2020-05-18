@@ -12,7 +12,8 @@ from calendar import timegm
 from datetime import datetime
 from multiprocessing import Pool, cpu_count
 from netrc import netrc
-from requests import get, HTTPDigestAuth
+from requests import get
+from requests.auth import HTTPDigestAuth
 from .meta import specprod_root
 
 
