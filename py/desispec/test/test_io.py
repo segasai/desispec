@@ -778,12 +778,13 @@ class TestIO(unittest.TestCase):
         # with running multiprocessing within the unittest environment.
         #
         from ..io.meta import findfile
-        from ..io.download import download
+        from ..io.download import download, _auth_cache
         filename = findfile('sky', expid=2, night='20150510', camera='b0', spectrograph=0)
         paths = download(filename)
         self.assertEqual(paths[0], filename)
         self.assertTrue(os.path.exists(paths[0]))
-        mock_get.assert_called_once_with('foo')
+        mock_get.assert_called_once_with('https://data.desi.lbl.gov/desi/spectro/redux/dailytest/exposures/20150510/00000002/sky-b0-00000002.fits',
+                                         auth=_auth_cache['data.desi.lbl.gov'])
         n.authenticators.assert_once_called_with('data.desi.lbl.gov')
         #
         # Deliberately test a non-existent file.
