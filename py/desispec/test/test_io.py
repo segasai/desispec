@@ -766,11 +766,11 @@ class TestIO(unittest.TestCase):
         """
         n = mock_netrc()
         n.authenticators.return_value = ('desi', 'foo', 'not-a-real-password')
-        r = mock_get.return_value = MagicMock()
+        r = MagicMock()
         r.status_code = 200
         r.content = b'This is a fake file.'
-        r.headers = dict()
-        r.headers['last-modified'] = 'Sun, 10 May 2015 11:45:22 MST'
+        r.headers = {'last-modified': 'Sun, 10 May 2015 11:45:22 MST'}
+        mock_get.return_value = r
         #
         # Test by downloading a single file.  This sidesteps any issues
         # with running multiprocessing within the unittest environment.
@@ -781,6 +781,7 @@ class TestIO(unittest.TestCase):
         paths = download(filename)
         self.assertEqual(paths[0], filename)
         self.assertTrue(os.path.exists(paths[0]))
+        mock_get.assert_called_once_with('foo')
         n.authenticators.assert_once_called_with('data.desi.lbl.gov')
         #
         # Deliberately test a non-existent file.
