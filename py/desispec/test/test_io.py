@@ -759,11 +759,13 @@ class TestIO(unittest.TestCase):
         self.assertEqual(night1, '20150102')
 
     # @unittest.skipUnless(os.path.exists(os.path.join(os.environ['HOME'], '.netrc')), "No ~/.netrc file detected.")
+    @patch('desispec.io.download.exists')
     @patch('desispec.io.download.get')
     @patch('desispec.io.download.netrc')
-    def test_download(self, mock_netrc, mock_get):
+    def test_download(self, mock_netrc, mock_get, mock_exists):
         """Test desiutil.io.download.
         """
+        mock_exists.return_value = False
         n = mock_netrc()
         n.authenticators.return_value = ('desi', 'foo', 'not-a-real-password')
         r = MagicMock()
@@ -785,14 +787,22 @@ class TestIO(unittest.TestCase):
         self.assertTrue(os.path.exists(paths[0]))
         mock_get.assert_called_once_with('https://data.desi.lbl.gov/desi/spectro/redux/dailytest/exposures/20150510/00000002/sky-b0-00000002.fits',
                                          auth=_auth_cache['data.desi.lbl.gov'])
-        n.authenticators.assert_once_called_with('data.desi.lbl.gov')
+        n.authenticators.assert_called_once_with('data.desi.lbl.gov')
         #
         # Deliberately test a non-existent file.
         #
-        # filename = findfile('sky', expid=2, night='20150510', camera='b9', spectrograph=9)
-        # paths = download(filename)
-        # self.assertIsNone(paths[0])
-        # self.assertFalse(os.path.exists(paths[0]))
+        r.status_code = 404
+        filename = findfile('sky', expid=2, night='20150510', camera='b9', spectrograph=9)
+        paths = download(filename)
+        self.assertIsNone(paths[0])
+        self.assertFalse(os.path.exists(paths[0]))
+        #
+        # Simulate a file that already exists.
+        #
+        mock_exists.return_value = True
+        filename = findfile('sky', expid=2, night='20150510', camera='b9', spectrograph=9)
+        paths = download(filename)
+        self.assertEqual(paths[0], filename)
 
     def test_create_camword(self):
         """ Test desispec.io.create_camword
