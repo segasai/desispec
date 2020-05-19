@@ -105,6 +105,7 @@ def _map_download(map_tuple):
         with open(filename, 'wb') as d:
             d.write(r.content)
         atime = stat(filename).st_atime
+        assert r.headers['last-modified'] == 'Sun, 10 May 2015 11:45:22 MST'
         mtime = timegm(datetime.strptime(r.headers['last-modified'],'%a, %d %b %Y %H:%M:%S %Z').utctimetuple())
         utime(filename,(atime,mtime))
         download_success = True
