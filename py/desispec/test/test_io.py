@@ -759,13 +759,11 @@ class TestIO(unittest.TestCase):
         self.assertEqual(night1, '20150102')
 
     # @unittest.skipUnless(os.path.exists(os.path.join(os.environ['HOME'], '.netrc')), "No ~/.netrc file detected.")
-    @patch('desispec.io.download.exists')
     @patch('desispec.io.download.get')
     @patch('desispec.io.download.netrc')
-    def test_download(self, mock_netrc, mock_get, mock_exists):
+    def test_download(self, mock_netrc, mock_get):
         """Test desiutil.io.download.
         """
-        mock_exists.return_value = False
         n = mock_netrc()
         n.authenticators.return_value = ('desi', 'foo', 'not-a-real-password')
         r = MagicMock()
@@ -795,12 +793,11 @@ class TestIO(unittest.TestCase):
         filename = findfile('sky', expid=2, night='20150510', camera='b9', spectrograph=9)
         paths = download(filename)
         self.assertIsNone(paths[0])
-        self.assertFalse(os.path.exists(paths[0]))
+        self.assertFalse(os.path.exists(filename))
         #
         # Simulate a file that already exists.
         #
-        mock_exists.return_value = True
-        filename = findfile('sky', expid=2, night='20150510', camera='b9', spectrograph=9)
+        filename = findfile('sky', expid=2, night='20150510', camera='b0', spectrograph=0)
         paths = download(filename)
         self.assertEqual(paths[0], filename)
 
