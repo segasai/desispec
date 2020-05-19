@@ -771,7 +771,7 @@ class TestIO(unittest.TestCase):
         r.content = b'This is a fake file.'
         r.headers = {'last-modified': 'Sun, 10 May 2015 11:45:22 GMT'}
         mock_get.return_value = r
-        self.assertEqual(datetime(2015, 5, 10, 11, 45, 22).strftime('%a, %d %b %Y %H:%M:%S',
+        self.assertEqual(datetime(2015, 5, 10, 11, 45, 22).strftime('%a, %d %b %Y %H:%M:%S'),
                          'Sun, 10 May 2015 11:45:22')
         #
         # Test by downloading a single file.  This sidesteps any issues
