@@ -13,7 +13,11 @@ import numpy as np
 from astropy.io import fits
 from astropy import units
 from astropy.table import Table
-
+import rvspecfit.fitter_ccf as fitter_ccf
+import rvspecfit.vel_fit as vel_fit
+import rvspecfit.spec_fit as spec_fit
+import rvspecfit.spec_inter as spec_inter
+import rvspecfit
 from desispec import io
 from desispec.fluxcalibration import match_templates,normalize_templates,isStdStar
 from desispec.interpolation import resample_flux
@@ -22,6 +26,36 @@ from desispec.parallel import default_nproc
 from desispec.io.filters import load_legacy_survey_filter
 from desiutil.dust import ext_odonnell,extinction_total_to_selective_ratio
 from desispec.fiberbitmasking import get_fiberbitmasked_frame
+
+
+def make_specdata(x):
+    ret = [spec_fit.SpecData()]
+    return ret
+
+def dorvspecfit(specdata):
+    config = rvspecfit.frozendict.frozendict(min_vel=-500,max_vel=500,
+                  vel_step0=5,
+                  min_vsini=0.1,
+                  max_vsini=100,
+                  min_vel_step=0.2,
+                  second_minimizer=False,
+                  template_lib='/global/cscratch1/sd/koposov/templates/templ_data_v210117/')
+    res = fitter_ccf.fit(specdata, config)
+    options = dict(npoly=10)
+    paramDict0 = res['best_par']
+    fixParam =[]
+    if res['best_vsini'] is not None:
+        paramDict0['vsini'] = min(max(res['best_vsini'], config['min_vsini']),
+                                  config['max_vsini'])
+
+    res1 = vel_fit.process(
+        specdata,
+        paramDict0,
+        fixParam=fixParam,
+        config=config,
+        options=options,
+    )
+    return res1
 
 def parse(options=None):
     parser = argparse.ArgumentParser(description="Fit of standard star spectra in frames.")
@@ -384,65 +418,35 @@ def main(args) :
         flux = {}
         ivar = {}
         resolution_data = {}
+        datas= []
         for camera in frames :
             for i,frame in enumerate(frames[camera]) :
                 identifier="%s-%d"%(camera,i)
-                wave[identifier]=frame.wave
-                flux[identifier]=frame.flux[star]
-                ivar[identifier]=frame.ivar[star]
-                resolution_data[identifier]=frame.resolution_data[star]
-
-        # preselect models based on magnitudes
-        photsys=fibermap['PHOTSYS'][star]
-        if not args.color in ['G-R','R-Z'] :
-            raise ValueError('Unknown color {}'.format(args.color))
-        bands=args.color.split("-")
-        model_colors = model_mags[bands[0]+photsys] - model_mags[bands[1]+photsys]
-
-        color_diff = model_colors - star_unextincted_colors[args.color][star]
-        selection = np.abs(color_diff) < args.delta_color
-        if np.sum(selection) == 0 :
-            log.warning("no model in the selected color range for this star")
-            continue
-
-
-        # smallest cube in parameter space including this selection (needed for interpolation)
-        new_selection = (teff>=np.min(teff[selection]))&(teff<=np.max(teff[selection]))
-        new_selection &= (logg>=np.min(logg[selection]))&(logg<=np.max(logg[selection]))
-        new_selection &= (feh>=np.min(feh[selection]))&(feh<=np.max(feh[selection]))
-        selection = np.where(new_selection)[0]
-
-        log.info("star#%d fiber #%d, %s = %f, number of pre-selected models = %d/%d"%(
-            star, starfibers[star], args.color, star_unextincted_colors[args.color][star],
-            selection.size, stdflux.shape[0]))
-
-        # Match unextincted standard stars to data
-        coefficients, redshift[star], chi2dof[star] = match_templates(
-            wave, flux, ivar, resolution_data,
-            stdwave, stdflux[selection],
-            teff[selection], logg[selection], feh[selection],
-            ncpu=args.ncpu, z_max=args.z_max, z_res=args.z_res,
-            template_error=args.template_error
-            )
-
-        linear_coefficients[star,selection] = coefficients
-
+                curerr = 1./frame.ivar[star]**.5
+                curerr[~np.isfinite(curerr)]=np.nanmedian(curerr)*100
+                datas.append(spec_fit.SpecData('desi_'+camera[:1].lower(),
+                                               frame.wave, frame.flux[star],
+                                  curerr))
+        
+        ret = dorvspecfit(datas)
+        print('done' ,star)
+        best_param = ret['param']['teff'], ret['param']['logg'], ret['param']['feh'], ret['param']['alpha']
+        # Apply redshift to original spectrum at full resolution
+        model=np.zeros(stdwave.size)
+        ii = spec_inter.getInterpolator('desi_all',dict(template_lib='/global/cscratch1/sd/koposov/templates/templ_data_v210117/'))
+        stdwave0 = ii.lam
+        model = (ii.eval(best_param))
+        stdwave=np.arange(3100,11100,.1)
+        redshift[star] = ret['vel']/3e5
+        model = spec_fit.evalRV(spec_fit.getRVInterpol(stdwave0, model),
+                                ret['vel'], stdwave)
+        chi2dof[star] = sum(ret['chisq_array'])/len(datas)/2000
         log.info('Star Fiber: {}; TEFF: {:.3f}; LOGG: {:.3f}; FEH: {:.3f}; Redshift: {:g}; Chisq/dof: {:.3f}'.format(
             starfibers[star],
-            np.inner(teff,linear_coefficients[star]),
-            np.inner(logg,linear_coefficients[star]),
-            np.inner(feh,linear_coefficients[star]),
+            ret['param']['teff'],ret['param']['logg'],ret['param']['feh'],
             redshift[star],
             chi2dof[star])
             )
-
-        # Apply redshift to original spectrum at full resolution
-        model=np.zeros(stdwave.size)
-        redshifted_stdwave = stdwave*(1+redshift[star])
-        for i,c in enumerate(linear_coefficients[star]) :
-            if c != 0 :
-                model += c*np.interp(stdwave,redshifted_stdwave,stdflux[i])
-
         # Apply dust extinction to the model
         log.info("Applying MW dust extinction to star {} with EBV = {}".format(star,fibermap['EBV'][star]))
         model *= dust_transmission(stdwave, fibermap['EBV'][star])
