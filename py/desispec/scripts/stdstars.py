@@ -423,7 +423,14 @@ def main(args) :
             for i,frame in enumerate(frames[camera]) :
                 identifier="%s-%d"%(camera,i)
                 curerr = 1./frame.ivar[star]**.5
-                curerr[~np.isfinite(curerr)]=np.nanmedian(curerr)*100
+                med =np.nanmedian(curerr)
+                curerr[~np.isfinite(curerr)]=med*100
+                curerr[:200] = med*100
+                curerr[-200:]= med*100
+                if camera=='z':
+                    curerr[-1000:]=med*100
+                if camera=='r':
+                    curerr[(frame.wave>7600)&(frame.wave<7630)]=med*100
                 datas.append(spec_fit.SpecData('desi_'+camera[:1].lower(),
                                                frame.wave, frame.flux[star],
                                   curerr))
@@ -431,6 +438,12 @@ def main(args) :
         ret = dorvspecfit(datas)
         print('done' ,star)
         best_param = ret['param']['teff'], ret['param']['logg'], ret['param']['feh'], ret['param']['alpha']
+        import matplotlib.pyplot as plt
+        for i,(curd,curm) in enumerate(zip(datas,ret['yfit'])):
+            plt.clf()
+            plt.plot(curd.spec)
+            plt.plot(curm)
+            plt.savefig('/global/cscratch1/sd/koposov/fig/xx_%d_%d.png'%(star,i))
         # Apply redshift to original spectrum at full resolution
         model=np.zeros(stdwave.size)
         ii = spec_inter.getInterpolator('desi_all',dict(template_lib='/global/cscratch1/sd/koposov/templates/templ_data_v210117/'))
