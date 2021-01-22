@@ -32,7 +32,7 @@ def make_specdata(x):
     ret = [spec_fit.SpecData()]
     return ret
 
-def dorvspecfit(specdata):
+def dorvspecfit(specdata,teff_prior):
     config = rvspecfit.frozendict.frozendict(min_vel=-500,max_vel=500,
                   vel_step0=5,
                   min_vsini=0.1,
@@ -41,7 +41,8 @@ def dorvspecfit(specdata):
                   second_minimizer=False,
                   template_lib='/global/cscratch1/sd/koposov/templates/templ_data_v210117/')
     res = fitter_ccf.fit(specdata, config)
-    options = dict(npoly=10)
+    options = dict(npoly=10,
+                  )
     paramDict0 = res['best_par']
     fixParam =[]
     if res['best_vsini'] is not None:
@@ -54,6 +55,7 @@ def dorvspecfit(specdata):
         fixParam=fixParam,
         config=config,
         options=options,
+        priors={'teff':teff_prior}
     )
     return res1
 
@@ -406,6 +408,7 @@ def main(args) :
     star_unextincted_colors = dict()
     star_unextincted_colors['G-R'] = star_unextincted_mags['G'] - star_unextincted_mags['R']
     star_unextincted_colors['R-Z'] = star_unextincted_mags['R'] - star_unextincted_mags['Z']
+    star_unextincted_colors['G-Z'] = star_unextincted_mags['G'] - star_unextincted_mags['Z']
 
     fitted_model_colors = np.zeros(nstars)
 
@@ -423,27 +426,40 @@ def main(args) :
             for i,frame in enumerate(frames[camera]) :
                 identifier="%s-%d"%(camera,i)
                 curerr = 1./frame.ivar[star]**.5
-                med =np.nanmedian(curerr)
-                curerr[~np.isfinite(curerr)]=med*100
-                curerr[:200] = med*100
-                curerr[-200:]= med*100
-                if camera=='z':
-                    curerr[-1000:]=med*100
-                if camera=='r':
-                    curerr[(frame.wave>7600)&(frame.wave<7630)]=med*100
+                curflux = frame.flux[star]
+                mederr = np.nanmedian(curerr)
+                medflux = np.nanmedian(curflux)
+                badmask = ((~np.isfinite(curerr)) | (curflux<0)
+                           | ( curflux>3*medflux) | (curerr<0.3*mederr))
+                pad = 250
+                badmask[:pad] = True
+                badmask[-pad:] = True
+                if camera[:1].lower() == 'z':
+                    badmask = badmask | (frame.wave>9200)
+                if camera[:1].lower() == 'r':
+                    badmask = badmask | ((frame.wave>7550)&(frame.wave<7750))
+                    badmask = badmask | ((frame.wave>6850)&(frame.wave<7000))
+                curerr[badmask]= mederr*1000
                 datas.append(spec_fit.SpecData('desi_'+camera[:1].lower(),
                                                frame.wave, frame.flux[star],
-                                  curerr))
-        
-        ret = dorvspecfit(datas)
+                                  curerr, badmask=badmask))
+
+        cur_gz = star_unextincted_colors['G-Z'][star]
+        teff_prior = 10**(np.poly1d([-4.05082755e-04,  4.57756796e-03, -1.99849977e-02,  5.70649609e-02,
+       -1.82285868e-01,  3.85150960e+00])(cur_gz))
+        teff_prior = (teff_prior, teff_prior*.02)
+        ret = dorvspecfit(datas, teff_prior)
         print('done' ,star)
         best_param = ret['param']['teff'], ret['param']['logg'], ret['param']['feh'], ret['param']['alpha']
-        import matplotlib.pyplot as plt
         for i,(curd,curm) in enumerate(zip(datas,ret['yfit'])):
-            plt.clf()
-            plt.plot(curd.spec)
-            plt.plot(curm)
-            plt.savefig('/global/cscratch1/sd/koposov/fig/xx_%d_%d.png'%(star,i))
+            if True:
+                import matplotlib.pyplot as plt
+                plt.clf()
+                
+                plt.plot(curd.lam, curd.spec,color='black')
+                plt.plot(curd.lam[curd.badmask], curd.spec[curd.badmask],'.',color='blue')
+                plt.plot(curd.lam, curm,color='red')
+                plt.savefig('/global/cscratch1/sd/koposov/fig/xx_%d_%d_%d.png'%(starfibers[star],expid,i))
         # Apply redshift to original spectrum at full resolution
         model=np.zeros(stdwave.size)
         ii = spec_inter.getInterpolator('desi_all',dict(template_lib='/global/cscratch1/sd/koposov/templates/templ_data_v210117/'))
